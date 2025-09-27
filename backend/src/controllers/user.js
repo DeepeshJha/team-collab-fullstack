@@ -20,6 +20,19 @@ exports.getUserById = (req, res) => {
     }
 }
 
+exports.updateUser = (req, res) => {
+    let userId = req.params.id;
+    let { name } = req.body;
+
+    let userIndex = users.findIndex(u => u.id == userId);
+    if(userIndex !== -1) {
+        users[userIndex].name = name;
+        res.json(users[userIndex]);
+    } else {
+        res.status(404).json({message: "User not found"})
+    }
+}
+
 exports.createUser = (req, res) => {
     const { name } = req.body;
     let newUser = { id: users.length + 1, name}

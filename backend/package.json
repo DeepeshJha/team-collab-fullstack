@@ -1,29 +1,46 @@
 {
-  "name": "backend",
+  "name": "team-collab-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Backend API for Team Collab Fullstack Platform - A comprehensive solution for team collaboration, productivity, and communication",
+  "main": "src/app.js",
   "directories": {
-    "test": "test"
+    "test": "tests"
   },
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "test": "jest"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "setup-db": "node scripts/setup-database.js",
+    "setup-db-force": "node scripts/setup-database.js --force",
+    "setup-db-no-seed": "node scripts/setup-database.js --no-seed",
+    "test-db": "node scripts/test-connection.js",
+    "setup-dev": "node scripts/setup-env.js development",
+    "setup-test": "node scripts/setup-env.js test", 
+    "setup-prod": "node scripts/setup-env.js production",
+    "reset-db": "node scripts/setup-database.js --force",
+    "db:migrate": "npx sequelize-cli db:migrate",
+    "db:seed": "npx sequelize-cli db:seed:all",
+    "lint": "echo 'Add ESLint configuration'",
+    "lint:fix": "echo 'Add ESLint configuration with --fix'"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": ["team-collaboration", "project-management", "express", "mysql", "sequelize", "rest-api"],
+  "author": "Team Collab Development Team",
+  "license": "MIT",
   "devDependencies": {
     "jest": "^30.1.3",
     "nodemon": "^3.1.10",
+    "sequelize-cli": "^6.6.3",
     "supertest": "^7.1.4"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
-    "morgan": "^1.10.1"
+    "morgan": "^1.10.1",
+    "mysql2": "^3.15.1",
+    "sequelize": "^6.37.7"
   },
   "jest": {
     "testMatch": [

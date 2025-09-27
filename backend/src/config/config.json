@@ -1,0 +1,57 @@
+{
+  "development": {
+    "username": "root",
+    "password": "root123",
+    "database": "team_collab_dev",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "dialect": "mysql",
+    "pool": {
+      "max": 10,
+      "min": 0,
+      "acquire": 30000,
+      "idle": 10000
+    },
+    "logging": false,
+    "define": {
+      "timestamps": true,
+      "underscored": false,
+      "freezeTableName": true
+    }
+  },
+  "test": {
+    "username": "root", 
+    "password": "root123",
+    "database": "team_collab_test",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "dialect": "mysql",
+    "pool": {
+      "max": 5,
+      "min": 0,
+      "acquire": 30000,
+      "idle": 10000
+    },
+    "logging": false
+  },
+  "production": {
+    "username": "root",
+    "password": "root123", 
+    "database": "team_collab_prod",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "dialect": "mysql",
+    "pool": {
+      "max": 20,
+      "min": 5,
+      "acquire": 60000,
+      "idle": 10000
+    },
+    "logging": false,
+    "dialectOptions": {
+      "ssl": {
+        "require": false
+      }
+    }
+  }
+}
