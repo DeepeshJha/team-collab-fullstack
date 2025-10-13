@@ -1,0 +1,2048 @@
+# Backend Development Guide - Complete Reference
+
+> **Purpose:** This document serves as a comprehensive guide for building a Node.js backend with Express, Sequelize, and JWT authentication. Written for developers at any level who want to understand modern backend development patterns and best practices.
+
+## Table of Contents
+
+1. [Introduction & Prerequisites](#introduction--prerequisites)
+2. [Project Architecture Overview](#project-architecture-overview)  
+3. [Database Layer with Sequelize](#database-layer-with-sequelize)
+4. [Authentication & Security System](#authentication--security-system)
+5. [API Development (Controllers & Routes)](#api-development-controllers--routes)
+6. [Code Organization & Best Practices](#code-organization--best-practices)
+7. [Step-by-Step Implementation Guide](#step-by-step-implementation-guide)
+8. [Common Patterns & Solutions](#common-patterns--solutions)
+9. [Troubleshooting & FAQs](#troubleshooting--faqs)
+
+---
+
+## Introduction & Prerequisites
+
+### What You'll Learn From This Project
+- **Professional Backend Architecture** - Industry-standard project structure and patterns
+- **Database Design & ORM** - Sequelize with MySQL, relationships, migrations
+- **Security Implementation** - JWT authentication, password hashing, middleware protection
+- **RESTful API Design** - Clean endpoints, proper HTTP status codes, error handling
+- **Code Organization** - Maintainable, scalable code structure
+- **Real-world Patterns** - Authentication flows, CRUD operations, middleware chains
+
+### Prerequisites
+- **JavaScript Fundamentals:**
+  - ES6+ features (arrow functions, destructuring, async/await)
+  - Promises and asynchronous programming
+  - CommonJS modules (`require()` and `module.exports`)
+- **HTTP Concepts:**
+  - HTTP methods (GET, POST, PUT, DELETE)
+  - Status codes (200, 201, 400, 401, 500, etc.)
+  - Request/Response cycle
+- **Database Basics:**
+  - Tables, columns, primary keys
+  - Relationships (one-to-many, many-to-many)
+  - Basic SQL understanding (helpful but not required)
+- **Development Environment:**
+  - Node.js (v14+) and npm installed
+  - MySQL server running
+  - Code editor (VS Code recommended)
+
+### Technology Stack Overview
+
+```javascript
+// Core Technologies
+{
+  "runtime": "Node.js",           // JavaScript runtime environment
+  "framework": "Express.js",      // Web application framework
+  "database": "MySQL",            // Relational database
+  "orm": "Sequelize",            // Object-Relational Mapping
+  "authentication": "JWT",        // JSON Web Tokens
+  "passwordSecurity": "bcrypt",   // Password hashing library
+  "environment": "dotenv"         // Environment variable management
+}
+```
+
+### Project Benefits
+- **Scalable Architecture** - Easy to add new features and models
+- **Security First** - JWT authentication, password hashing, input validation
+- **Developer Friendly** - Clear code organization, comprehensive error handling
+- **Production Ready** - Environment configurations, proper logging, error management
+
+---
+
+## Project Architecture Overview
+
+### High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CLIENT (Frontend)                        │
+│                  React/Angular/Vue                          │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTP Requests (JSON)
+                      │
+┌─────────────────────▼───────────────────────────────────────┐
+│                 EXPRESS.JS SERVER                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │   Routes    │  │ Middleware  │  │    Controllers      │ │
+│  │  (API URLs) │  │ (Auth,CORS) │  │ (Business Logic)    │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ Sequelize ORM
+                      │
+┌─────────────────────▼───────────────────────────────────────┐
+│                   MySQL DATABASE                            │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────────┐   │
+│  │  users  │ │  teams  │ │projects │ │     tasks       │   │
+│  │ table   │ │  table  │ │  table  │ │    table        │   │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Request Flow Example
+
+```javascript
+// Example: User Registration Flow
+1. Frontend → POST /api/auth/register { name, email, password }
+2. Express Router → /auth routes
+3. Auth Middleware → Validate input, check rate limits
+4. Auth Controller → Business logic (check existing user, create new user)
+5. User Model → Sequelize hooks (hash password automatically)
+6. MySQL Database → Store user record
+7. Controller → Generate JWT token
+8. Express → Return response { user, token }
+9. Frontend ← Success/Error response
+```
+
+### Directory Structure Explained
+
+```
+backend/
+├── src/
+│   ├── app.js                 # Main application entry point
+│   ├── models/                # Database models (Sequelize)
+│   │   ├── index.js          # Model loader and associations
+│   │   ├── user.js           # User model with hooks
+│   │   ├── team.js           # Team model
+│   │   ├── project.js        # Project model
+│   │   └── task.js           # Task model
+│   ├── controllers/           # Business logic handlers
+│   │   ├── auth.js           # Authentication (login/register)
+│   │   ├── user.js           # User CRUD operations
+│   │   ├── team.js           # Team management
+│   │   └── index.js          # Controller exports
+│   ├── routes/               # API endpoint definitions
+│   │   ├── index.js          # Main router
+│   │   ├── auth.js           # Auth routes (/login, /register)
+│   │   ├── user.js           # User routes (/users)
+│   │   └── team.js           # Team routes (/teams)
+│   ├── middlewares/          # Custom middleware functions
+│   │   ├── auth.js           # JWT authentication middleware
+│   │   ├── validation.js     # Input validation middleware
+│   │   └── index.js          # Middleware exports
+│   └── config/               # Configuration files
+│       └── config.json       # Database configurations
+├── scripts/                  # Utility scripts
+│   ├── setup-database.js     # Automated DB setup
+│   └── setup-env.js          # Environment setup
+├── package.json              # Dependencies and scripts
+└── .env                      # Environment variables
+```
+
+---
+
+## Database Layer with Sequelize
+
+### What is Sequelize?
+Sequelize is an **Object-Relational Mapping (ORM)** library that:
+- Translates JavaScript objects to SQL database operations
+- Provides a JavaScript interface for database interactions
+- Handles SQL query generation automatically
+- Manages database connections and transactions
+- Supports database migrations and seeders
+
+### Model Definition Pattern
+
+Every model in our application follows this pattern:
+
+```javascript
+// models/user.js - Example Model Structure
+const { Model } = require('sequelize');
+
+module.exports = (sequelize, DataTypes) => {
+    class User extends Model {
+        // Define relationships with other models
+        static associate(models) {
+            // User relationships defined here
+        }
+    }
+    
+    // Define table structure
+    User.init({
+        // Column definitions
+        name: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            validate: { len: [2, 100] }
+        }
+        // ... other columns
+    }, {
+        // Model configuration
+        sequelize,
+        modelName: 'User',
+        tableName: 'users',
+        hooks: {
+            // Lifecycle hooks (beforeCreate, beforeUpdate, etc.)
+        }
+    });
+    
+    return User;
+};
+```
+
+### Understanding Database Relationships
+
+Our application uses three main relationship types:
+
+#### 1. One-to-Many (hasMany / belongsTo)
+```javascript
+// Example: One User creates many Teams
+User.hasMany(models.Team, {
+    foreignKey: 'createdBy',
+    as: 'createdTeams'
+});
+
+Team.belongsTo(models.User, {
+    foreignKey: 'createdBy',
+    as: 'creator'
+});
+
+// Usage:
+const userTeams = await user.getCreatedTeams();
+const teamCreator = await team.getCreator();
+```
+
+#### 2. Many-to-Many (belongsToMany)
+```javascript
+// Example: Users can belong to many Teams, Teams can have many Users
+User.belongsToMany(models.Team, {
+    through: 'TeamMembers',    // Junction table
+    foreignKey: 'userId',
+    otherKey: 'teamId',
+    as: 'teams'
+});
+
+Team.belongsToMany(models.User, {
+    through: 'TeamMembers',
+    foreignKey: 'teamId',
+    otherKey: 'userId',
+    as: 'members'
+});
+
+// Usage:
+await user.addTeam(teamId);                    // Add user to team
+const userTeams = await user.getTeams();       // Get user's teams
+const teamMembers = await team.getMembers();   // Get team members
+```
+
+### Database Models in Our Application
+
+#### User Model
+```javascript
+// Purpose: Authentication, user profiles, permissions
+{
+  id: "Auto-increment primary key",
+  name: "User's full name",
+  email: "Unique email for login",
+  password: "Hashed password (never plain text)",
+  avatar: "Profile picture URL (optional)",
+  role: "admin | member | viewer",
+  isActive: "Account status (active/inactive)",
+  createdAt: "Account creation timestamp",
+  updatedAt: "Last modification timestamp"
+}
+
+// Relationships:
+// - Creates many teams (hasMany Team)
+// - Belongs to many teams (belongsToMany Team)
+// - Creates many projects (hasMany Project)  
+// - Assigned to many projects (belongsToMany Project)
+// - Assigned to many tasks (hasMany Task)
+// - Sends many messages (hasMany Message)
+```
+
+#### Team Model
+```javascript
+// Purpose: Group users together for collaboration
+{
+  id: "Auto-increment primary key",
+  name: "Team name",
+  description: "Team description",
+  createdBy: "Foreign key to User (creator)",
+  isActive: "Team status",
+  createdAt: "Creation timestamp",
+  updatedAt: "Last modification timestamp"
+}
+
+// Relationships:
+// - Belongs to one creator (belongsTo User)
+// - Has many members (belongsToMany User)
+// - Has many projects (hasMany Project)
+```
+
+### Sequelize Hooks (Lifecycle Events)
+
+Hooks are functions that run automatically at specific points in the model lifecycle:
+
+```javascript
+// Example: Password hashing hooks in User model
+hooks: {
+    // Runs before creating a new user
+    beforeCreate: async (user, options) => {
+        user.password = await bcrypt.hash(user.password, 10);
+    },
+    
+    // Runs before updating a user
+    beforeUpdate: async (user, options) => {
+        if (user.changed('password')) {
+            user.password = await bcrypt.hash(user.password, 10);
+        }
+    }
+}
+
+// Common hooks:
+// - beforeValidate / afterValidate
+// - beforeCreate / afterCreate  
+// - beforeUpdate / afterUpdate
+// - beforeDestroy / afterDestroy
+```
+
+### Database Querying Patterns
+
+#### Basic CRUD Operations
+```javascript
+// Create
+const user = await User.create({
+    name: 'John Doe',
+    email: 'john@example.com',
+    password: 'plaintext' // Will be hashed by hook
+});
+
+// Read (Find)
+const users = await User.findAll();                    // All users
+const user = await User.findByPk(1);                   // By primary key
+const user = await User.findOne({ where: { email } }); // By condition
+
+// Update
+await user.update({ name: 'John Smith' });
+// OR
+await User.update(
+    { name: 'John Smith' },
+    { where: { id: 1 } }
+);
+
+// Delete
+await user.destroy();                    // Delete instance
+await User.destroy({ where: { id: 1 }}); // Delete by condition
+```
+
+#### Advanced Queries with Relationships
+```javascript
+// Include related data
+const userWithTeams = await User.findByPk(1, {
+    include: [
+        { model: Team, as: 'teams' },
+        { model: Project, as: 'createdProjects' }
+    ]
+});
+
+// Complex filtering
+const activeUsers = await User.findAll({
+    where: {
+        isActive: true,
+        role: ['admin', 'member']
+    },
+    include: [{
+        model: Team,
+        as: 'teams',
+        where: { isActive: true }
+    }],
+    order: [['createdAt', 'DESC']],
+    limit: 10
+});
+```
+
+---
+
+## Authentication & Security System
+
+### Security Architecture Overview
+
+Our authentication system implements multiple layers of security:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Security Layers                       │
+├─────────────────────────────────────────────────────────┤
+│ 1. Input Validation    │ Validate all incoming data    │
+│ 2. Rate Limiting       │ Prevent brute force attacks   │
+│ 3. Password Hashing    │ bcrypt with salt rounds       │
+│ 4. JWT Authentication  │ Stateless token-based auth    │
+│ 5. Route Protection    │ Middleware for secure routes  │
+│ 6. Error Handling      │ No sensitive data in errors   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Password Security with bcrypt
+
+#### Why bcrypt?
+- **Salt Generation:** Creates unique salt for each password
+- **Adaptive:** Configurable complexity (salt rounds)
+- **Time-tested:** Industry standard for password hashing
+- **Brute Force Resistant:** Intentionally slow to prevent attacks
+
+#### Implementation Pattern
+```javascript
+// In User model hooks (models/user.js)
+const bcrypt = require('bcrypt');
+
+hooks: {
+    beforeCreate: async (user, options) => {
+        // Hash password before saving to database
+        user.password = await bcrypt.hash(user.password, 10);
+        // Salt rounds: 10 = good balance of security vs performance
+    },
+    
+    beforeUpdate: async (user, options) => {
+        // Only hash if password is being changed
+        if (user.changed('password')) {
+            user.password = await bcrypt.hash(user.password, 10);
+        }
+    }
+}
+
+// Password verification (in auth controller)
+const isPasswordValid = await bcrypt.compare(plainPassword, hashedPassword);
+```
+
+### JWT (JSON Web Tokens) Authentication
+
+#### What is JWT?
+JWT is a compact, URL-safe token format for securely transmitting information between parties.
+
+#### JWT Structure
+```
+Header.Payload.Signature
+
+// Example JWT:
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiam9obkBleGFtcGxlLmNvbSIsImlhdCI6MTYzNDU2Nzg5MCwiZXhwIjoxNjM0NjU0MjkwfQ.signature-hash
+
+// Decoded Payload:
+{
+  "userId": 1,
+  "email": "john@example.com",
+  "iat": 1634567890,    // Issued at timestamp
+  "exp": 1634654290     // Expiration timestamp
+}
+```
+
+#### JWT Implementation in Our App
+```javascript
+// Token Generation (controllers/auth.js)
+const jwt = require('jsonwebtoken');
+
+const token = jwt.sign(
+    { 
+        userId: user.id, 
+        email: user.email 
+    },                                          // Payload
+    process.env.JWT_SECRET || 'fallback-secret', // Secret key
+    { expiresIn: '7d' }                         // Options
+);
+
+// Token Verification (middlewares/auth.js)
+const authenticateToken = async (req, res, next) => {
+    try {
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1]; // "Bearer TOKEN"
+        
+        if (!token) {
+            return res.status(401).json({ message: 'Access token required' });
+        }
+        
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded; // Add user info to request
+        next(); // Continue to next middleware/route
+    } catch (error) {
+        return res.status(403).json({ message: 'Invalid or expired token' });
+    }
+};
+```
+
+### Authentication Controller Implementation
+
+#### Registration Flow
+```javascript
+// controllers/auth.js - register function
+const register = async (req, res) => {
+    try {
+        // 1. Extract and validate input
+        const { name, email, password } = req.body;
+        if (!name || !email || !password) {
+            return res.status(400).json({ message: 'All fields required' });
+        }
+        
+        // 2. Check if user already exists
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+            return res.status(409).json({ message: 'Email already registered' });
+        }
+        
+        // 3. Create user (password auto-hashed by model hook)
+        const newUser = await User.create({ name, email, password });
+        
+        // 4. Generate JWT token
+        const token = jwt.sign(
+            { userId: newUser.id, email: newUser.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+        
+        // 5. Return success response (exclude password)
+        res.status(201).json({
+            message: 'Registration successful',
+            user: {
+                id: newUser.id,
+                name: newUser.name,
+                email: newUser.email,
+                role: newUser.role
+            },
+            token
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+```
+
+#### Login Flow
+```javascript
+// controllers/auth.js - login function
+const login = async (req, res) => {
+    try {
+        // 1. Extract credentials
+        const { email, password } = req.body;
+        
+        // 2. Find user by email
+        const user = await User.findOne({ where: { email } });
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+        
+        // 3. Verify password
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+        
+        // 4. Generate token and respond
+        const token = jwt.sign(
+            { userId: user.id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+        
+        res.json({
+            message: 'Login successful',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            },
+            token
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+```
+
+### Authentication Middleware
+
+Middleware functions run between the request and response, allowing us to:
+- Verify JWT tokens
+- Add user information to requests  
+- Protect routes from unauthorized access
+- Handle authentication errors consistently
+
+```javascript
+// middlewares/auth.js
+const authenticateToken = async (req, res, next) => {
+    try {
+        // Extract token from Authorization header
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1];
+        
+        if (!token) {
+            return res.status(401).json({ message: 'Access token required' });
+        }
+        
+        // Verify and decode token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Optional: Get fresh user data from database
+        const user = await User.findByPk(decoded.userId);
+        if (!user || !user.isActive) {
+            return res.status(401).json({ message: 'User not found or inactive' });
+        }
+        
+        // Add user info to request object
+        req.user = user;
+        next(); // Continue to next middleware or route handler
+    } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Token expired' });
+        }
+        return res.status(403).json({ message: 'Invalid token' });
+    }
+};
+
+// Usage in routes:
+router.get('/profile', authenticateToken, (req, res) => {
+    // req.user is available here thanks to middleware
+    res.json({ user: req.user });
+});
+```
+
+---
+
+## API Development (Controllers & Routes)
+
+### Controller Pattern
+
+Controllers contain the business logic for handling HTTP requests. They:
+- Process incoming data
+- Interact with database models
+- Handle errors appropriately
+- Return consistent responses
+
+#### Controller Structure Pattern
+```javascript
+// controllers/user.js - Example CRUD Controller
+const { User } = require('../models');
+
+// GET /api/users - Get all users
+const getAllUsers = async (req, res) => {
+    try {
+        const users = await User.findAll({
+            attributes: { exclude: ['password'] }, // Never return passwords
+            order: [['createdAt', 'DESC']]
+        });
+        res.json(users);
+    } catch (error) {
+        console.error('Get users error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// GET /api/users/:id - Get user by ID
+const getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findByPk(id, {
+            attributes: { exclude: ['password'] }
+        });
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        res.json(user);
+    } catch (error) {
+        console.error('Get user error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// POST /api/users - Create new user
+const createUser = async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        
+        // Validation
+        if (!name || !email || !password) {
+            return res.status(400).json({ 
+                message: 'Name, email, and password are required' 
+            });
+        }
+        
+        // Check if email already exists
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+            return res.status(409).json({ 
+                message: 'Email already exists' 
+            });
+        }
+        
+        // Create user
+        const user = await User.create({ name, email, password });
+        
+        // Return user without password
+        const { password: _, ...userWithoutPassword } = user.toJSON();
+        res.status(201).json(userWithoutPassword);
+    } catch (error) {
+        console.error('Create user error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// Export all functions
+module.exports = {
+    getAllUsers,
+    getUserById,
+    createUser,
+    updateUser,
+    deleteUser
+};
+```
+
+### Router Pattern
+
+Routes define the API endpoints and connect them to controller functions:
+
+```javascript
+// routes/user.js - RESTful User Routes
+const express = require('express');
+const router = express.Router();
+const userController = require('../controllers/user');
+const { authenticateToken } = require('../middlewares/auth');
+
+// Public routes (no authentication required)
+// None for users - all user operations require authentication
+
+// Protected routes (authentication required)
+router.get('/', authenticateToken, userController.getAllUsers);
+router.get('/:id', authenticateToken, userController.getUserById);
+router.post('/', authenticateToken, userController.createUser);
+router.put('/:id', authenticateToken, userController.updateUser);
+router.delete('/:id', authenticateToken, userController.deleteUser);
+
+module.exports = router;
+```
+
+### RESTful API Design Principles
+
+Our API follows REST conventions for consistent and predictable endpoints:
+
+| HTTP Method | Endpoint | Purpose | Request Body | Response |
+|------------|----------|---------|--------------|----------|
+| GET | `/api/users` | Get all users | None | Array of users |
+| GET | `/api/users/:id` | Get specific user | None | User object |
+| POST | `/api/users` | Create new user | User data | Created user |
+| PUT | `/api/users/:id` | Update user | Updated data | Updated user |
+| DELETE | `/api/users/:id` | Delete user | None | Success message |
+
+#### HTTP Status Codes Usage
+```javascript
+// Success responses
+200 // OK - Successful GET, PUT
+201 // Created - Successful POST
+204 // No Content - Successful DELETE
+
+// Client error responses  
+400 // Bad Request - Invalid input data
+401 // Unauthorized - Missing/invalid authentication
+403 // Forbidden - Valid auth but insufficient permissions
+404 // Not Found - Resource doesn't exist
+409 // Conflict - Resource already exists (duplicate email)
+
+// Server error responses
+500 // Internal Server Error - Unexpected server error
+```
+
+### Error Handling Patterns
+
+#### Consistent Error Response Format
+```javascript
+// Success response format
+{
+  "message": "Operation successful",
+  "data": { /* result data */ }
+}
+
+// Error response format
+{
+  "message": "Human-readable error message",
+  "error": "Technical error details (optional)",
+  "statusCode": 400
+}
+```
+
+#### Error Handling in Controllers
+```javascript
+const createUser = async (req, res) => {
+    try {
+        // ... business logic
+        res.status(201).json({
+            message: 'User created successfully',
+            user: newUser
+        });
+    } catch (error) {
+        // Log error for debugging (don't expose to client)
+        console.error('Create user error:', error);
+        
+        // Check for specific error types
+        if (error.name === 'SequelizeValidationError') {
+            return res.status(400).json({
+                message: 'Validation failed',
+                errors: error.errors.map(e => e.message)
+            });
+        }
+        
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(409).json({
+                message: 'Email already exists'
+            });
+        }
+        
+        // Generic error response
+        res.status(500).json({
+            message: 'Internal server error'
+        });
+    }
+};
+```
+
+---
+
+## Code Organization & Best Practices
+
+### File Organization Principles
+
+#### 1. Separation of Concerns
+Each file/folder has a single, well-defined responsibility:
+
+```javascript
+// ✅ Good: Each file has one responsibility
+models/user.js          // Only User model definition
+controllers/user.js     // Only User business logic  
+routes/user.js         // Only User route definitions
+middlewares/auth.js    // Only authentication middleware
+
+// ❌ Bad: Mixed responsibilities
+userStuff.js           // Contains model + controller + routes
+```
+
+#### 2. Consistent Naming Conventions
+```javascript
+// Files and folders: kebab-case or camelCase
+user-controller.js  OR  userController.js
+auth-middleware.js  OR  authMiddleware.js
+
+// Variables and functions: camelCase
+const getUserById = async (req, res) => {}
+const isPasswordValid = await bcrypt.compare()
+
+// Constants: UPPER_SNAKE_CASE
+const JWT_SECRET = process.env.JWT_SECRET
+const SALT_ROUNDS = 10
+
+// Classes and Models: PascalCase
+class User extends Model {}
+const UserModel = require('./user')
+```
+
+#### 3. Module Exports Pattern
+```javascript
+// ✅ Preferred: Object export at bottom
+const getAllUsers = async (req, res) => {}
+const createUser = async (req, res) => {}
+const updateUser = async (req, res) => {}
+
+module.exports = {
+    getAllUsers,
+    createUser,
+    updateUser
+};
+
+// ❌ Avoid: Individual exports (creates repetition)
+exports.getAllUsers = async (req, res) => {}
+exports.createUser = async (req, res) => {}
+```
+
+### Environment Configuration
+
+#### Environment Variables (.env)
+```bash
+# Database Configuration
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=team_collab_dev
+DB_PORT=3306
+
+# Application Configuration  
+NODE_ENV=development
+PORT=5000
+
+# Security Configuration
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_EXPIRES_IN=7d
+
+# API Configuration
+API_VERSION=v1
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+```
+
+#### Config File Structure (config/config.json)
+```javascript
+{
+  "development": {
+    "username": "root",
+    "password": "password",
+    "database": "team_collab_dev",  
+    "host": "127.0.0.1",
+    "port": 3306,
+    "dialect": "mysql",
+    "logging": console.log,
+    "charset": "utf8mb4",
+    "collate": "utf8mb4_unicode_ci"
+  },
+  "test": {
+    "username": "root",
+    "password": "password", 
+    "database": "team_collab_test",
+    "host": "127.0.0.1",
+    "dialect": "mysql",
+    "logging": false
+  },
+  "production": {
+    "use_env_variable": "DATABASE_URL",
+    "dialect": "mysql",
+    "logging": false,
+    "ssl": true
+  }
+}
+```
+
+### Code Quality Standards
+
+#### 1. Function Documentation
+```javascript
+/**
+ * Creates a new user account with validation and security measures
+ * @param {Object} req - Express request object
+ * @param {Object} req.body - Request body containing user data
+ * @param {string} req.body.name - User's full name (2-100 characters)
+ * @param {string} req.body.email - Valid email address (unique)
+ * @param {string} req.body.password - Plain text password (will be hashed)
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with created user data or error
+ */
+const createUser = async (req, res) => {
+    // Implementation
+};
+```
+
+#### 2. Input Validation
+```javascript
+const createUser = async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        
+        // Basic validation
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                message: 'Name, email, and password are required'
+            });
+        }
+        
+        // Email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                message: 'Please provide a valid email address'
+            });
+        }
+        
+        // Password strength validation
+        if (password.length < 6) {
+            return res.status(400).json({
+                message: 'Password must be at least 6 characters long'
+            });
+        }
+        
+        // Continue with user creation...
+    } catch (error) {
+        // Error handling
+    }
+};
+```
+
+#### 3. Async/Await Best Practices
+```javascript
+// ✅ Good: Proper error handling with try/catch
+const getUserWithTeams = async (userId) => {
+    try {
+        const user = await User.findByPk(userId, {
+            include: [{ model: Team, as: 'teams' }]
+        });
+        return user;
+    } catch (error) {
+        console.error('Error fetching user with teams:', error);
+        throw error; // Re-throw to let caller handle
+    }
+};
+
+// ✅ Good: Multiple awaits in sequence when needed
+const createUserWithProfile = async (userData) => {
+    try {
+        const user = await User.create(userData);
+        const profile = await Profile.create({ userId: user.id });
+        return { user, profile };
+    } catch (error) {
+        // Rollback logic if needed
+        throw error;
+    }
+};
+
+// ❌ Avoid: Mixing promises and async/await
+const badExample = async () => {
+    return User.findAll().then(users => {
+        // Don't mix .then() with async/await
+    });
+};
+```
+
+---
+
+## Step-by-Step Implementation Guide
+
+This section provides a complete walkthrough of implementing each component from scratch.
+
+### Phase 1: Project Setup & Database
+
+#### Step 1: Initialize Project
+```bash
+# Create project directory
+mkdir team-collab-backend
+cd team-collab-backend
+
+# Initialize Node.js project
+npm init -y
+
+# Install core dependencies
+npm install express sequelize mysql2 bcrypt jsonwebtoken dotenv cors morgan
+
+# Install development dependencies  
+npm install --save-dev nodemon
+
+# Create directory structure
+mkdir -p src/{models,controllers,routes,middlewares,config}
+mkdir scripts
+```
+
+#### Step 2: Setup Package.json Scripts
+```json
+{
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "setup-db": "node scripts/setup-database.js"
+  }
+}
+```
+
+#### Step 3: Create Environment Configuration
+```bash
+# .env file
+NODE_ENV=development
+PORT=5000
+DB_HOST=localhost
+DB_USER=root  
+DB_PASSWORD=your_password
+DB_NAME=team_collab_dev
+JWT_SECRET=your-jwt-secret-key
+```
+
+#### Step 4: Database Configuration
+```javascript
+// config/config.json
+{
+  "development": {
+    "username": "root",
+    "password": "your_password",
+    "database": "team_collab_dev",
+    "host": "127.0.0.1",
+    "dialect": "mysql"
+  }
+}
+```
+
+### Phase 2: Database Models
+
+#### Step 1: Create Model Index File
+```javascript
+// models/index.js
+const fs = require('fs');
+const path = require('path');
+const Sequelize = require('sequelize');
+const process = require('process');
+
+const basename = path.basename(__filename);
+const env = process.env.NODE_ENV || 'development';
+const config = require('../config/config.json')[env];
+const db = {};
+
+let sequelize;
+if (config.use_env_variable) {
+  sequelize = new Sequelize(process.env[config.use_env_variable], config);
+} else {
+  sequelize = new Sequelize(config.database, config.username, config.password, config);
+}
+
+// Auto-load all model files
+fs
+  .readdirSync(__dirname)
+  .filter(file => {
+    return (file.indexOf('.') !== 0) && (file !== basename) && (file.slice(-3) === '.js');
+  })
+  .forEach(file => {
+    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
+    db[model.name] = model;
+  });
+
+// Setup associations
+Object.keys(db).forEach(modelName => {
+  if (db[modelName].associate) {
+    db[modelName].associate(db);
+  }
+});
+
+db.sequelize = sequelize;
+db.Sequelize = Sequelize;
+
+module.exports = db;
+```
+
+#### Step 2: Create User Model
+```javascript
+// models/user.js
+const { Model } = require('sequelize');
+const bcrypt = require('bcrypt');
+
+module.exports = (sequelize, DataTypes) => {
+    class User extends Model {
+        static associate(models) {
+            // User creates many teams
+            User.hasMany(models.Team, {
+                foreignKey: 'createdBy',
+                as: 'createdTeams'
+            });
+            
+            // User belongs to many teams (through TeamMembers)
+            User.belongsToMany(models.Team, {
+                through: 'TeamMembers',
+                foreignKey: 'userId',
+                otherKey: 'teamId', 
+                as: 'teams'
+            });
+        }
+    }
+    
+    User.init({
+        name: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            validate: {
+                len: [2, 100],
+                notEmpty: true
+            }
+        },
+        email: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            unique: true,
+            validate: {
+                isEmail: true,
+                len: [5, 254]
+            }
+        },
+        password: {
+            type: DataTypes.STRING,
+            allowNull: false
+        },
+        role: {
+            type: DataTypes.ENUM('admin', 'member', 'viewer'),
+            allowNull: false,
+            defaultValue: 'member'
+        },
+        isActive: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true
+        }
+    }, {
+        sequelize,
+        modelName: 'User',
+        tableName: 'users',
+        hooks: {
+            beforeCreate: async (user, options) => {
+                user.password = await bcrypt.hash(user.password, 10);
+            },
+            beforeUpdate: async (user, options) => {
+                if (user.changed('password')) {
+                    user.password = await bcrypt.hash(user.password, 10);
+                }
+            }
+        }
+    });
+    
+    return User;
+};
+```
+
+### Phase 3: Authentication System
+
+#### Step 1: Create Auth Controller
+```javascript
+// controllers/auth.js
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { User } = require('../models');
+
+const register = async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        
+        // Validation
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                message: 'Name, email, and password are required'
+            });
+        }
+        
+        // Check existing user
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+            return res.status(409).json({
+                message: 'Email already registered'
+            });
+        }
+        
+        // Create user (password will be hashed by hook)
+        const user = await User.create({ name, email, password });
+        
+        // Generate JWT
+        const token = jwt.sign(
+            { userId: user.id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+        
+        // Response
+        res.status(201).json({
+            message: 'Registration successful',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            },
+            token
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        // Validation
+        if (!email || !password) {
+            return res.status(400).json({
+                message: 'Email and password are required'
+            });
+        }
+        
+        // Find user
+        const user = await User.findOne({ where: { email } });
+        if (!user) {
+            return res.status(401).json({
+                message: 'Invalid email or password'
+            });
+        }
+        
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                message: 'Invalid email or password'
+            });
+        }
+        
+        // Generate JWT
+        const token = jwt.sign(
+            { userId: user.id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+        
+        // Response
+        res.json({
+            message: 'Login successful',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            },
+            token
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+module.exports = { register, login };
+```
+
+#### Step 2: Create Auth Middleware
+```javascript
+// middlewares/auth.js
+const jwt = require('jsonwebtoken');
+const { User } = require('../models');
+
+const authenticateToken = async (req, res, next) => {
+    try {
+        // Get token from Authorization header
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1]; // "Bearer TOKEN"
+        
+        if (!token) {
+            return res.status(401).json({
+                message: 'Access token required'
+            });
+        }
+        
+        // Verify token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Get user from database
+        const user = await User.findByPk(decoded.userId);
+        if (!user || !user.isActive) {
+            return res.status(401).json({
+                message: 'User not found or inactive'
+            });
+        }
+        
+        // Add user to request
+        req.user = user;
+        next();
+    } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({
+                message: 'Token expired'
+            });
+        }
+        return res.status(403).json({
+            message: 'Invalid token'
+        });
+    }
+};
+
+module.exports = { authenticateToken };
+```
+
+### Phase 4: API Routes
+
+#### Step 1: Create Auth Routes
+```javascript
+// routes/auth.js
+const express = require('express');
+const router = express.Router();
+const { register, login } = require('../controllers/auth');
+
+router.post('/register', register);
+router.post('/login', login);
+
+module.exports = router;
+```
+
+#### Step 2: Create Main Router
+```javascript
+// routes/index.js
+const express = require('express');
+const router = express.Router();
+
+// Import route modules
+const authRoutes = require('./auth');
+const userRoutes = require('./user');
+
+// Mount routes
+router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
+
+// Health check route
+router.get('/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString() 
+    });
+});
+
+module.exports = router;
+```
+
+#### Step 3: Create Main App File
+```javascript
+// src/app.js
+const express = require('express');
+const cors = require('cors');
+const morgan = require('morgan');
+require('dotenv').config();
+
+const db = require('./models');
+const routes = require('./routes');
+
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(morgan('dev'));
+
+// Routes
+app.use('/api', routes);
+
+// Global error handler
+app.use((error, req, res, next) => {
+    console.error('Global error:', error);
+    res.status(500).json({
+        message: 'Something went wrong!',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+});
+
+// Start server
+const PORT = process.env.PORT || 5000;
+
+async function startServer() {
+    try {
+        // Test database connection
+        await db.sequelize.authenticate();
+        console.log('Database connected successfully');
+        
+        // Sync database (create tables)
+        await db.sequelize.sync();
+        console.log('Database synchronized');
+        
+        // Start server
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+            console.log(`API available at: http://localhost:${PORT}/api`);
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
+}
+
+if (require.main === module) {
+    startServer();
+}
+
+module.exports = app;
+```
+
+---
+
+## Common Patterns & Solutions
+
+### Authentication Patterns
+
+#### 1. Route Protection Pattern
+```javascript
+// Apply authentication to all routes in a router
+const router = express.Router();
+const { authenticateToken } = require('../middlewares/auth');
+
+// Apply to all routes in this router
+router.use(authenticateToken);
+
+// Now all routes require authentication
+router.get('/profile', getUserProfile);
+router.put('/profile', updateUserProfile);
+router.delete('/account', deleteUserAccount);
+```
+
+#### 2. Role-Based Access Control
+```javascript
+// middlewares/auth.js - Role checking middleware
+const requireRole = (allowedRoles) => {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({
+                message: 'Authentication required'
+            });
+        }
+        
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                message: 'Insufficient permissions'
+            });
+        }
+        
+        next();
+    };
+};
+
+// Usage in routes
+router.delete('/users/:id', 
+    authenticateToken, 
+    requireRole(['admin']), 
+    deleteUser
+);
+
+router.get('/admin/dashboard', 
+    authenticateToken, 
+    requireRole(['admin', 'moderator']), 
+    getAdminDashboard
+);
+```
+
+#### 3. Resource Ownership Validation
+```javascript
+// Check if user owns the resource they're trying to modify
+const checkResourceOwnership = (resourceModel, foreignKey = 'userId') => {
+    return async (req, res, next) => {
+        try {
+            const resourceId = req.params.id;
+            const resource = await resourceModel.findByPk(resourceId);
+            
+            if (!resource) {
+                return res.status(404).json({
+                    message: 'Resource not found'
+                });
+            }
+            
+            // Check if user owns the resource or is admin
+            if (resource[foreignKey] !== req.user.id && req.user.role !== 'admin') {
+                return res.status(403).json({
+                    message: 'Access denied'
+                });
+            }
+            
+            req.resource = resource; // Add resource to request
+            next();
+        } catch (error) {
+            res.status(500).json({
+                message: 'Error checking resource ownership'
+            });
+        }
+    };
+};
+
+// Usage
+router.put('/tasks/:id', 
+    authenticateToken, 
+    checkResourceOwnership(Task, 'assignedTo'), 
+    updateTask
+);
+```
+
+### Database Query Patterns
+
+#### 1. Pagination Pattern
+```javascript
+// controllers/user.js - Paginated user list
+const getAllUsers = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+        
+        const { count, rows } = await User.findAndCountAll({
+            attributes: { exclude: ['password'] },
+            limit,
+            offset,
+            order: [['createdAt', 'DESC']]
+        });
+        
+        res.json({
+            users: rows,
+            pagination: {
+                totalItems: count,
+                totalPages: Math.ceil(count / limit),
+                currentPage: page,
+                itemsPerPage: limit
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+```
+
+#### 2. Search and Filter Pattern
+```javascript
+const searchUsers = async (req, res) => {
+    try {
+        const { 
+            search, 
+            role, 
+            isActive, 
+            page = 1, 
+            limit = 10 
+        } = req.query;
+        
+        const whereClause = {};
+        
+        // Text search across multiple fields
+        if (search) {
+            whereClause[Op.or] = [
+                { name: { [Op.like]: `%${search}%` } },
+                { email: { [Op.like]: `%${search}%` } }
+            ];
+        }
+        
+        // Filter by role
+        if (role) {
+            whereClause.role = role;
+        }
+        
+        // Filter by active status
+        if (isActive !== undefined) {
+            whereClause.isActive = isActive === 'true';
+        }
+        
+        const users = await User.findAll({
+            where: whereClause,
+            attributes: { exclude: ['password'] },
+            limit: parseInt(limit),
+            offset: (parseInt(page) - 1) * parseInt(limit),
+            order: [['createdAt', 'DESC']]
+        });
+        
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ message: 'Search failed' });
+    }
+};
+```
+
+#### 3. Nested Relationships Pattern
+```javascript
+// Get user with all related data
+const getUserWithDetails = async (req, res) => {
+    try {
+        const user = await User.findByPk(req.params.id, {
+            attributes: { exclude: ['password'] },
+            include: [
+                {
+                    model: Team,
+                    as: 'teams',
+                    include: [{
+                        model: Project,
+                        as: 'projects',
+                        include: [{
+                            model: Task,
+                            as: 'tasks'
+                        }]
+                    }]
+                },
+                {
+                    model: Task,
+                    as: 'assignedTasks',
+                    where: { status: ['pending', 'in-progress'] },
+                    required: false // LEFT JOIN
+                }
+            ]
+        });
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch user details' });
+    }
+};
+```
+
+### Error Handling Patterns
+
+#### 1. Centralized Error Handler
+```javascript
+// middlewares/errorHandler.js
+const errorHandler = (error, req, res, next) => {
+    let statusCode = 500;
+    let message = 'Internal Server Error';
+    
+    // Sequelize validation errors
+    if (error.name === 'SequelizeValidationError') {
+        statusCode = 400;
+        message = 'Validation failed';
+        const errors = error.errors.map(e => ({
+            field: e.path,
+            message: e.message
+        }));
+        return res.status(statusCode).json({ message, errors });
+    }
+    
+    // Sequelize unique constraint errors
+    if (error.name === 'SequelizeUniqueConstraintError') {
+        statusCode = 409;
+        message = 'Resource already exists';
+    }
+    
+    // JWT errors
+    if (error.name === 'JsonWebTokenError') {
+        statusCode = 401;
+        message = 'Invalid token';
+    }
+    
+    if (error.name === 'TokenExpiredError') {
+        statusCode = 401;
+        message = 'Token expired';
+    }
+    
+    // Custom application errors
+    if (error.statusCode) {
+        statusCode = error.statusCode;
+        message = error.message;
+    }
+    
+    // Log error for debugging
+    console.error('Error:', {
+        message: error.message,
+        stack: error.stack,
+        url: req.url,
+        method: req.method,
+        timestamp: new Date().toISOString()
+    });
+    
+    res.status(statusCode).json({
+        message,
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+    });
+};
+
+module.exports = errorHandler;
+
+// app.js - Use the error handler
+app.use(errorHandler);
+```
+
+#### 2. Custom Error Classes
+```javascript
+// utils/errors.js
+class AppError extends Error {
+    constructor(message, statusCode) {
+        super(message);
+        this.statusCode = statusCode;
+        this.name = this.constructor.name;
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+
+class ValidationError extends AppError {
+    constructor(message = 'Validation failed') {
+        super(message, 400);
+    }
+}
+
+class NotFoundError extends AppError {
+    constructor(message = 'Resource not found') {
+        super(message, 404);
+    }
+}
+
+class UnauthorizedError extends AppError {
+    constructor(message = 'Unauthorized') {
+        super(message, 401);
+    }
+}
+
+module.exports = {
+    AppError,
+    ValidationError,
+    NotFoundError,
+    UnauthorizedError
+};
+
+// Usage in controllers
+const { NotFoundError } = require('../utils/errors');
+
+const getUserById = async (req, res, next) => {
+    try {
+        const user = await User.findByPk(req.params.id);
+        if (!user) {
+            throw new NotFoundError('User not found');
+        }
+        res.json(user);
+    } catch (error) {
+        next(error); // Pass to error handler
+    }
+};
+```
+
+---
+
+## Troubleshooting & FAQs
+
+### Common Database Issues
+
+#### Issue: "Access denied for user 'root'@'localhost'"
+**Cause:** Incorrect MySQL credentials or permissions
+**Solution:**
+```bash
+# Check MySQL is running
+mysql --version
+
+# Test connection
+mysql -u root -p
+
+# If forgotten password, reset it:
+# 1. Stop MySQL service
+# 2. Start MySQL with --skip-grant-tables
+# 3. Connect and reset password:
+ALTER USER 'root'@'localhost' IDENTIFIED BY 'new_password';
+FLUSH PRIVILEGES;
+```
+
+#### Issue: "Database doesn't exist" 
+**Cause:** Database not created before running application
+**Solution:**
+```javascript
+// Create database automatically in setup script
+const mysql = require('mysql2/promise');
+
+const createDatabase = async () => {
+    const connection = await mysql.createConnection({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD
+    });
+    
+    await connection.execute(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME}`);
+    await connection.end();
+};
+```
+
+#### Issue: "Column doesn't exist" after adding new field
+**Cause:** Database schema not updated
+**Solution:**
+```bash
+# Force sync (development only - will drop existing data)
+await sequelize.sync({ force: true });
+
+# Or create proper migration
+npx sequelize-cli migration:generate --name add-avatar-to-users
+```
+
+### Authentication Issues
+
+#### Issue: "JsonWebTokenError: invalid signature"
+**Cause:** JWT_SECRET mismatch or changed
+**Solution:**
+```bash
+# Ensure consistent JWT_SECRET across environments
+# Check .env file
+echo $JWT_SECRET
+
+# Regenerate secret if needed
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+
+#### Issue: Passwords not hashing
+**Cause:** bcrypt hook not working or incorrect implementation
+**Debug:**
+```javascript
+// Add logging to model hook
+hooks: {
+    beforeCreate: async (user, options) => {
+        console.log('Hashing password for:', user.email);
+        user.password = await bcrypt.hash(user.password, 10);
+        console.log('Password hashed successfully');
+    }
+}
+```
+
+#### Issue: "Cannot set headers after they are sent"
+**Cause:** Multiple responses sent in one request
+**Solution:**
+```javascript
+// ❌ Bad: Missing return statements
+if (!user) {
+    res.status(404).json({ message: 'Not found' });
+    // Missing return here!
+}
+res.json(user); // This will cause the error
+
+// ✅ Good: Always return after sending response
+if (!user) {
+    return res.status(404).json({ message: 'Not found' });
+}
+return res.json(user);
+```
+
+### Performance Issues
+
+#### Issue: Slow database queries
+**Cause:** Missing indexes or N+1 query problem
+**Solution:**
+```javascript
+// Add database indexes
+indexes: [
+    { fields: ['email'] },
+    { fields: ['createdAt'] },
+    { fields: ['role', 'isActive'] }
+]
+
+// Use eager loading to prevent N+1 queries
+const users = await User.findAll({
+    include: [{
+        model: Team,
+        as: 'teams'
+    }]
+});
+
+// Instead of loading teams for each user separately
+```
+
+#### Issue: Memory leaks in development
+**Cause:** Not closing database connections or event listeners
+**Solution:**
+```javascript
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    await sequelize.close();
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT received, shutting down gracefully');
+    await sequelize.close();
+    process.exit(0);
+});
+```
+
+### Development Workflow Issues
+
+#### Issue: Changes not reflected in database
+**Cause:** Sequelize sync not working correctly
+**Solution:**
+```javascript
+// Development: Force sync (drops and recreates tables)
+if (process.env.NODE_ENV === 'development') {
+    await sequelize.sync({ force: true });
+    console.log('Database tables recreated');
+}
+
+// Production: Use migrations instead
+npx sequelize-cli migration:generate --name create-users-table
+```
+
+#### Issue: Environment variables not loading
+**Cause:** .env file not found or incorrect path
+**Solution:**
+```javascript
+// Check if .env is loaded
+console.log('DB_HOST:', process.env.DB_HOST);
+
+// Specify .env path explicitly
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+// Create .env.example for team members
+# .env.example
+NODE_ENV=development
+PORT=5000
+DB_HOST=localhost
+# etc...
+```
+
+### Testing Your Implementation
+
+#### Basic API Testing with curl
+```bash
+# Test registration
+curl -X POST http://localhost:5000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"John Doe","email":"john@example.com","password":"password123"}'
+
+# Test login
+curl -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"john@example.com","password":"password123"}'
+
+# Test protected route (use token from login response)
+curl -X GET http://localhost:5000/api/users \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+```
+
+#### Database Connection Test
+```javascript
+// scripts/test-connection.js
+const { sequelize } = require('../src/models');
+
+async function testConnection() {
+    try {
+        await sequelize.authenticate();
+        console.log('✅ Database connection successful');
+        
+        // Test query
+        const [results] = await sequelize.query('SELECT 1 + 1 AS result');
+        console.log('✅ Database query successful:', results);
+        
+        process.exit(0);
+    } catch (error) {
+        console.error('❌ Database connection failed:', error);
+        process.exit(1);
+    }
+}
+
+testConnection();
+```
+
+---
+
+## Conclusion
+
+This documentation covers the complete implementation of a modern Node.js backend with:
+
+- **Security-first approach** with JWT authentication and password hashing
+- **Scalable architecture** with proper separation of concerns
+- **Professional code organization** following industry best practices
+- **Comprehensive error handling** for production readiness
+- **Real-world patterns** that can be applied to any project
+
+### Key Takeaways
+
+1. **Security is not optional** - Always hash passwords, validate input, and protect routes
+2. **Organization matters** - Clear file structure makes code maintainable and scalable
+3. **Error handling is crucial** - Proper error handling improves user experience and debugging
+4. **Documentation saves time** - Good documentation helps team members and future you
+5. **Patterns are reusable** - Learn these patterns once, apply them everywhere
+
+### Next Steps for Expansion
+
+- **Add more models** (Team, Project, Task) following the same patterns
+- **Implement file uploads** with multer and cloud storage
+- **Add real-time features** with Socket.IO
+- **Create comprehensive testing** with Jest and Supertest  
+- **Add API documentation** with Swagger/OpenAPI
+- **Implement caching** with Redis for better performance
+
+This foundation provides everything needed to build a professional, scalable backend application that can grow with your project requirements.
+
+---
+
+*Built with ❤️ for developers who want to understand not just what to code, but why and how to code it properly.*

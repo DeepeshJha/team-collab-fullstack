@@ -22,6 +22,9 @@ KEY CONCEPTS FOR BEGINNERS:
 // Think of it as a superclass that gives us database superpowers!
 const { Model } = require('sequelize');
 
+// Import bcrypt for password hashing
+const bcrypt = require('bcrypt');
+
 // Export a function that takes sequelize connection and DataTypes
 // This pattern allows the index.js file to pass these parameters when loading models
 // WHY A FUNCTION? Because we need to pass the database connection to each model
@@ -242,7 +245,7 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING,         // VARCHAR(255) - enough space for hashed passwords
             allowNull: false,               // REQUIRED - every user needs a password
             validate: {                     // VALIDATION RULES
-                len: [60, 255]              // Hashed passwords are typically 60+ characters
+                // len: [60, 255]              // Hashed passwords are typically 60+ characters
             },
             comment: 'Hashed password - never store plain text passwords!'
         },
@@ -370,8 +373,40 @@ module.exports = (sequelize, DataTypes) => {
         // CREATE INDEX idx_users_role ON users(role);
         // CREATE INDEX idx_users_isActive ON users(isActive);
         // CREATE INDEX idx_users_createdAt ON users(createdAt);
-        
-    });
+
+        // HOOKS: Functions that run at specific points in the model lifecycle
+        hooks: {
+            // BEFORE CREATING A NEW USER
+            beforeCreate: async (user, options) => {
+                // Hash the user's password before saving to database
+                user.password = await bcrypt.hash(user.password, 10);
+            },
+            beforeUpdate: async (user, options) => {
+                // If password is being changed, hash the new password
+                if (user.changed('password')) {
+                    user.password = await bcrypt.hash(user.password, 10);
+                }
+            }
+        },
+        // SQL EQUIVALENT:
+        /*
+        CREATE TABLE users (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            name VARCHAR(255) NOT NULL COMMENT 'User full name for display purposes',
+            email VARCHAR(255) NOT NULL UNIQUE COMMENT 'User email address - used for login and notifications',
+            password VARCHAR(255) NOT NULL COMMENT 'Hashed password - never store plain text passwords!',
+            avatar VARCHAR(255) COMMENT 'URL to user profile picture',
+            role ENUM('admin', 'member', 'viewer') NOT NULL DEFAULT 'member' COMMENT 'User role: admin (full access), member (standard user), viewer (read-only)',
+            isActive BOOLEAN NOT NULL DEFAULT true COMMENT 'Whether user account is active and can login',
+            createdAt DATETIME NOT NULL,
+            updatedAt DATETIME NOT NULL,
+            UNIQUE INDEX idx_users_email (email),
+            INDEX idx_users_role (role),
+            INDEX idx_users_isActive (isActive),
+            INDEX idx_users_createdAt (createdAt)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        */
+    }); // <-- Close User.init here
 
     /*
     WHAT HAPPENS AFTER User.init()?

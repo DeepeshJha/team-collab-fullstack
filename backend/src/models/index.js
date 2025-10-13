@@ -16,7 +16,7 @@ const env = process.env.NODE_ENV || 'development';
 
 // Load database configuration for current environment
 // This reads from config/config.json and picks the right environment section
-const config = require(__dirname + '/../config/config.json')[env];
+const config = require('../../config/config.json')[env];
 
 // Empty object that will hold all our database models
 // After loading, this will contain: { User: UserModel, Team: TeamModel, etc. }

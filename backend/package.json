@@ -17,7 +17,7 @@
     "setup-db-no-seed": "node scripts/setup-database.js --no-seed",
     "test-db": "node scripts/test-connection.js",
     "setup-dev": "node scripts/setup-env.js development",
-    "setup-test": "node scripts/setup-env.js test", 
+    "setup-test": "node scripts/setup-env.js test",
     "setup-prod": "node scripts/setup-env.js production",
     "reset-db": "node scripts/setup-database.js --force",
     "db:migrate": "npx sequelize-cli db:migrate",
@@ -25,7 +25,14 @@
     "lint": "echo 'Add ESLint configuration'",
     "lint:fix": "echo 'Add ESLint configuration with --fix'"
   },
-  "keywords": ["team-collaboration", "project-management", "express", "mysql", "sequelize", "rest-api"],
+  "keywords": [
+    "team-collaboration",
+    "project-management",
+    "express",
+    "mysql",
+    "sequelize",
+    "rest-api"
+  ],
   "author": "Team Collab Development Team",
   "license": "MIT",
   "devDependencies": {
@@ -35,9 +42,12 @@
     "supertest": "^7.1.4"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "mysql2": "^3.15.1",
     "sequelize": "^6.37.7"
