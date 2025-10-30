@@ -27,7 +27,8 @@ const register = async (req, res) => {
             return res.status(409).json({ message: 'Email already exists' });
         }
         // Step 4: Create the user (password will be hashed by the model hook)
-        const newUser = await User.create({ name, email, password });
+        // const newUser = await User.create({ name, email, password });
+        const newUser = await User.create({ name, email, password: await bcrypt.hash(password, 10) });
 
         // Step 6: Generate JWT token (optional, can be done during login)
         const token = jwt.sign(

@@ -218,7 +218,7 @@ module.exports = (sequelize, DataTypes) => {
             validate: {                     // VALIDATION RULES - check data before saving
                 len: [2, 100],              // Name must be between 2 and 100 characters
                 notEmpty: true,             // Name cannot be just spaces or empty
-                isAlpha: false              // Allow spaces and special characters in names
+                // isAlpha: false              // Allow spaces and special characters in names
             },
             comment: 'User full name for display purposes' // Database comment for documentation
         },
@@ -379,7 +379,7 @@ module.exports = (sequelize, DataTypes) => {
             // BEFORE CREATING A NEW USER
             beforeCreate: async (user, options) => {
                 // Hash the user's password before saving to database
-                user.password = await bcrypt.hash(user.password, 10);
+                // user.password = await bcrypt.hash(user.password, 10);
             },
             beforeUpdate: async (user, options) => {
                 // If password is being changed, hash the new password
