@@ -20,7 +20,7 @@ const authenticateToken = async (req, res, next) => {
 
         // Step 3: Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'my_jwt_secret');
-
+        /** 
         // Step 4: Get user from database (optional but recommended)
         const user = await User.findByPk(decoded.id);
         if(!user || !user.isActive) {
@@ -28,7 +28,16 @@ const authenticateToken = async (req, res, next) => {
                 message: 'Invalid token: user does not exist or is inactive'
             });
         }
-
+        */
+       
+        // Step 4: Create user object from decoded token
+        const user = {
+            id: decoded.id,
+            username: decoded.username,
+            email: decoded.email,
+            role: decoded.role,
+            isActive: decoded.isActive
+        };
         // Step 5: Add user to request object
         req.user = user;
         next(); // Proceed to next middleware or route handler
