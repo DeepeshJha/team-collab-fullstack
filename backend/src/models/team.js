@@ -57,6 +57,11 @@ module.exports = (sequelize, DataTypes) => {
             // USAGE: const creator = await team.getCreator();
             // SQL EQUIVALENT: SELECT * FROM users WHERE id = team.createdBy;
 
+            // RELATIONSHIP: Team belongs to User (who updated it)
+            Team.belongsTo(models.User, {
+                foreignKey: 'updatedBy',
+                as: 'updater'  // Alias for queries: team.getUpdater()
+            });
             
             // RELATIONSHIP 2: Team has many Users as members (Many-to-Many)
             // REAL WORLD: A team can have multiple members, and a user can join multiple teams
@@ -108,6 +113,286 @@ module.exports = (sequelize, DataTypes) => {
             // USAGE:
             // const pendingTasks = await team.getTasks({ where: { status: 'pending' } });
         }
+
+        /*
+        INSTANCE METHODS
+        Methods called on individual team instances
+        */
+
+        // Check if user is team creator/owner
+        isCreator(userId) {
+            return this.createdBy === userId;
+        }
+
+        // Check if user is team member
+        async isMember(userId) {
+            const member = await this.getMembers({ where: { id: userId } });
+            return member.length > 0;
+        }
+
+        // Add a new member to the team
+        async addNewMember(userId, role = 'member') {
+            // Check if already member
+            const isMember = await this.isMember(userId);
+            if (isMember) {
+                throw new Error('User is already a member of this team');
+            }
+
+            // Check team capacity
+            if (this.memberCount >= this.maxMembers) {
+                throw new Error('Team has reached maximum member limit');
+            }
+
+            // Add member
+            await this.addMember(userId, { through: { role: role } });
+
+            // Update memberCount
+            await this.increment('memberCount');
+
+            return { success: true, message: 'Member added successfully' };
+        }
+
+        // Remove a member from the team
+        async removeMember(userId) {
+            const isMember = await this.isMember(userId);
+            if (!isMember) {
+                throw new Error('User is not a member of this team');
+            }
+
+            // Cannot remove creator
+            if (this.createdBy === userId) {
+                throw new Error('Cannot remove team creator');
+            }
+
+            await this.removeMember(userId);
+            await this.decrement('memberCount');
+
+            return { success: true, message: 'Member removed successfully' };
+        }
+
+        // Get team statistics
+        async getStats() {
+            const members = await this.countMembers();
+            const projects = await this.countProjects();
+            const tasks = await this.countTasks();
+            const messages = await this.countMessages();
+
+            return {
+                membersCount: members,
+                projectsCount: projects,
+                tasksCount: tasks,
+                messagesCount: messages,
+                createdAt: this.createdAt,
+                updatedAt: this.updatedAt
+            };
+        }
+
+        // Generate new invite code
+        async refreshInviteCode() {
+            const crypto = require('crypto');
+            const newCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+            await this.update({ inviteCode: newCode });
+            return newCode;
+        }
+
+        // Check if invite code is valid
+        async validateInviteCode(code) {
+            return this.inviteCode === code && this.visibility !== 'hidden';
+        }
+
+        // Join team with invite code
+        static async joinWithCode(code, userId) {
+            const team = await this.findOne({ where: { inviteCode: code } });
+            
+            if (!team) {
+                throw new Error('Invalid invite code');
+            }
+
+            if (team.visibility === 'hidden') {
+                throw new Error('Cannot join hidden team');
+            }
+
+            if (team.memberCount >= team.maxMembers) {
+                throw new Error('Team is full');
+            }
+
+            const isMember = await team.isMember(userId);
+            if (isMember) {
+                throw new Error('Already a member of this team');
+            }
+
+            await team.addNewMember(userId, 'member');
+            return team;
+        }
+
+        // Archive the team
+        async archive() {
+            return await this.update({
+                status: 'archived',
+                visibility: 'hidden'
+            });
+        }
+
+        // Deactivate the team temporarily
+        async deactivate() {
+            return await this.update({ status: 'inactive' });
+        }
+
+        // Reactivate the team
+        async reactivate() {
+            return await this.update({ status: 'active' });
+        }
+
+        // Get active projects count
+        async getActiveProjectsCount() {
+            const { sequelize } = require('sequelize');
+            const Op = require('sequelize').Op;
+            
+            return await this.countProjects({
+                where: { status: 'active' }
+            });
+        }
+
+        // Get pending tasks count
+        async getPendingTasksCount() {
+            const { Op } = require('sequelize');
+            return await this.countTasks({
+                where: { status: { [Op.notIn]: ['completed', 'cancelled'] } }
+            });
+        }
+
+        // Get team details with relations
+        // Returns comprehensive team info including creator, updater, members, and stats
+        async getFullDetails() {
+            const creator = await this.getCreator();           // Get user who created the team
+            const updater = await this.getUpdater();           // Get user who last updated the team
+            const members = await this.getMembers({ attributes: ['id', 'name', 'email', 'avatar'] });
+            const stats = await this.getStats();
+
+            return {
+                id: this.id,
+                name: this.name,
+                description: this.description,
+                descriptionRich: this.descriptionRich,
+                avatar: this.avatar,
+                coverImage: this.coverImage,
+                icon: this.icon,
+                color: this.color,
+                status: this.status,
+                visibility: this.visibility,
+                department: this.department,
+                tags: this.tags,
+                creator: creator,                   // User object who created this team
+                updater: updater,                   // User object who last modified this team
+                members: members,                   // Array of team members
+                stats: stats,                       // Team statistics (counts, timestamps)
+                settings: this.settings
+            };
+        }
+
+        // Update team settings
+        async updateSettings(newSettings) {
+            const updated = {
+                ...this.settings,
+                ...newSettings
+            };
+            return await this.update({ settings: updated });
+        }
+
+        /*
+        STATIC METHODS
+        Called on the Team model itself
+        */
+
+        // Get all active teams
+        static async getActiveTeams() {
+            return await this.findAll({
+                where: { status: 'active' },
+                order: [['createdAt', 'DESC']]
+            });
+        }
+
+        // Get public teams
+        static async getPublicTeams() {
+            return await this.findAll({
+                where: { visibility: 'public' },
+                attributes: ['id', 'name', 'description', 'avatar', 'icon', 'department', 'memberCount'],
+                order: [['memberCount', 'DESC']]
+            });
+        }
+
+        // Get teams by user (teams user is member of or creator of)
+        static async getTeamsByUser(userId) {
+            return await this.findAll({
+                include: [{
+                    model: sequelize.models.User,
+                    where: { id: userId },
+                    through: { attributes: [] },
+                    as: 'members'
+                }],
+                order: [['createdAt', 'DESC']]
+            });
+        }
+
+        // Get teams created by user
+        static async getTeamsByCreator(userId) {
+            return await this.findAll({
+                where: { createdBy: userId },
+                order: [['createdAt', 'DESC']]
+            });
+        }
+
+        // Get teams by department
+        static async getTeamsByDepartment(department) {
+            return await this.findAll({
+                where: { department: department, status: 'active' },
+                order: [['name', 'ASC']]
+            });
+        }
+
+        // Search teams by name or tags
+        static async searchTeams(query) {
+            const Op = require('sequelize').Op;
+            return await this.findAll({
+                where: {
+                    [Op.or]: [
+                        { name: { [Op.like]: `%${query}%` } },
+                        { description: { [Op.like]: `%${query}%` } }
+                    ],
+                    visibility: { [Op.notIn]: ['hidden'] }
+                },
+                order: [['memberCount', 'DESC']],
+                limit: 10
+            });
+        }
+
+        // Get trending teams (most active)
+        static async getTrendingTeams(limit = 5) {
+            return await this.findAll({
+                where: { status: 'active', visibility: 'public' },
+                order: [['memberCount', 'DESC']],
+                limit: limit
+            });
+        }
+
+        // Create team with initial member
+        static async createTeam(teamData, creatorId) {
+            const crypto = require('crypto');
+            const inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+
+            const team = await this.create({
+                ...teamData,
+                createdBy: creatorId,
+                inviteCode: inviteCode,
+                memberCount: 1,
+                activeMembersCount: 1
+            });
+
+            // Add creator as member
+            await team.addMember(creatorId, { through: { role: 'admin' } });
+
+            return team;
+        }
     }
 
     /*
@@ -129,6 +414,20 @@ module.exports = (sequelize, DataTypes) => {
     Team.init({
         
         /*
+        PRIMARY KEY SECTION
+        Every database table needs a unique identifier
+        */
+        
+        id: {
+            type: DataTypes.INTEGER,
+            primaryKey: true,
+            autoIncrement: true,
+            allowNull: false,
+            comment: 'Unique team identifier'
+        },
+        // DATABASE RESULT: id INT PRIMARY KEY AUTO_INCREMENT NOT NULL
+
+        /*
         TEAM BASIC INFORMATION SECTION
         Core details that identify and describe the team
         */
@@ -136,60 +435,70 @@ module.exports = (sequelize, DataTypes) => {
         // TEAM NAME - What the team is called
         // EXAMPLES: "Frontend Development", "Marketing Squad", "Design Team"
         name: {
-            type: DataTypes.STRING,         // VARCHAR(255) - can store up to 255 characters
-            allowNull: false,               // REQUIRED - every team must have a name
-            validate: {                     // VALIDATION RULES - check data before saving
-                len: [3, 100],              // Name must be between 3 and 100 characters
-                notEmpty: true              // Cannot be just spaces
+            type: DataTypes.STRING,
+            allowNull: false,
+            validate: {
+                len: [3, 100],
+                notEmpty: true
             },
             comment: 'Team display name - what users see'
         },
-        // DATABASE RESULT: name VARCHAR(255) NOT NULL COMMENT 'Team display name - what users see'
-        
+
         // TEAM DESCRIPTION - What the team does
         // EXAMPLES: "Responsible for all frontend development and user experience"
         description: {
-            type: DataTypes.TEXT,           // TEXT type - can store long descriptions
-            allowNull: true,                // OPTIONAL - teams don't need descriptions
-            validate: {                     // VALIDATION RULES
-                len: [0, 500]               // Description max 500 characters
+            type: DataTypes.TEXT,
+            allowNull: true,
+            validate: {
+                len: [0, 500]
             },
             comment: 'Optional description explaining team purpose and responsibilities'
         },
-        // DATABASE RESULT: description TEXT COMMENT 'Optional description explaining team purpose...'
 
-        
+        descriptionRich: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+            comment: 'Team description in markdown format with rich formatting'
+        },
+
+        /*
+        TEAM IDENTIFICATION SECTION
+        Unique codes and identifiers for team discovery and invitations
+        */
+
+        inviteCode: {
+            type: DataTypes.STRING(50),
+            unique: true,
+            allowNull: false,
+            comment: 'Unique code for team invitations (e.g., ABC123XYZ)'
+        },
+
         /*
         TEAM SETTINGS SECTION
         Configuration options that control team behavior
         */
-        
+
         // TEAM PRIVACY - Who can see and join the team
-        // PURPOSE: Control team visibility and membership
         isPrivate: {
-            type: DataTypes.BOOLEAN,        // BOOLEAN - true or false
-            allowNull: false,               // REQUIRED - must specify privacy level
-            defaultValue: false,            // Public by default (anyone can see and join)
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
             comment: 'Whether team is private (invite-only) or public (anyone can join)'
         },
-        // REAL WORLD EXAMPLES:
-        // - Public team: "Open Source Contributors" - anyone can join
-        // - Private team: "Executive Leadership" - invitation only
-        // DATABASE RESULT: isPrivate BOOLEAN NOT NULL DEFAULT false
+
+        visibility: {
+            type: DataTypes.ENUM('public', 'private', 'hidden'),
+            defaultValue: 'private',
+            comment: 'public (listed in directory), private (unlisted), hidden (invisible)'
+        },
 
         // TEAM STATUS - Current state of the team
-        // PURPOSE: Manage team lifecycle (active work, paused, finished)
         status: {
-            type: DataTypes.ENUM('active', 'inactive', 'archived'), // Only these values allowed
-            allowNull: false,               // REQUIRED - every team must have a status
-            defaultValue: 'active',         // New teams are active by default
+            type: DataTypes.ENUM('active', 'inactive', 'archived'),
+            allowNull: false,
+            defaultValue: 'active',
             comment: 'Team status: active (working), inactive (paused), archived (completed/disbanded)'
         },
-        // STATUS MEANINGS:
-        // - active: Team is currently working and collaborating
-        // - inactive: Team is temporarily paused (members still there, no active work)
-        // - archived: Team work is finished (read-only, for historical reference)
-        // DATABASE RESULT: status ENUM('active', 'inactive', 'archived') NOT NULL DEFAULT 'active'
 
         /*
         TEAM BRANDING SECTION
@@ -197,47 +506,143 @@ module.exports = (sequelize, DataTypes) => {
         */
         
         // TEAM AVATAR - Team profile picture/logo
-        // PURPOSE: Visual identification in lists and chats
         avatar: {
-            type: DataTypes.STRING,         // VARCHAR(255) - URL to image file
-            allowNull: true,                // OPTIONAL - teams don't need avatars
-            validate: {                     // VALIDATION RULES
-                isUrl: true                 // Must be valid URL format if provided
+            type: DataTypes.STRING,
+            allowNull: true,
+            validate: {
+                isUrl: true
             },
             comment: 'URL to team profile picture or logo'
         },
-        // EXAMPLES: 
-        // - "https://company.com/logos/frontend-team.png"
-        // - "https://cdn.example.com/avatars/marketing-squad.jpg"
-        // DATABASE RESULT: avatar VARCHAR(255) COMMENT 'URL to team profile picture or logo'
 
-        color: {
-            type: DataTypes.STRING(7),  // For hex color codes #FFFFFF
+        coverImage: {
+            type: DataTypes.STRING,
             allowNull: true,
             validate: {
-                is: /^#[0-9A-F]{6}$/i  // Valid hex color
+                isUrl: true
             },
-            comment: 'Team theme color in hex format'
+            comment: 'URL to team cover/header image'
         },
 
-        // Foreign Key
+        icon: {
+            type: DataTypes.STRING(10),
+            defaultValue: '👥',
+            comment: 'Team emoji icon for quick visual identification'
+        },
+
+        color: {
+            type: DataTypes.STRING(7),
+            allowNull: true,
+            validate: {
+                is: /^#[0-9A-F]{6}$/i
+            },
+            comment: 'Team theme color in hex format (#FFFFFF)'
+        },
+
+        /*
+        TEAM CATEGORIZATION SECTION
+        Classification and tagging for organization
+        */
+
+        department: {
+            type: DataTypes.ENUM('engineering', 'marketing', 'design', 'sales', 'hr', 'other'),
+            allowNull: true,
+            comment: 'Team department or category'
+        },
+
+        tags: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            comment: 'Array of tags for organization and search (e.g., ["frontend", "web", "react"])'
+        },
+
+        /*
+        TEAM CONFIGURATION SECTION
+        Flexible JSON settings for team behavior
+        */
+
+        settings: {
+            type: DataTypes.JSON,
+            defaultValue: {
+                allowPublicJoin: false,
+                requireApproval: false,
+                allowGuestAccess: false,
+                notifyOnNewMember: true,
+                allowExternalIntegrations: false
+            },
+            comment: 'Team configuration settings stored as JSON'
+        },
+
+        /*
+        TEAM CONSTRAINTS SECTION
+        Rules and limitations for team membership
+        */
+
+        // Foreign Key - Creator
         createdBy: {
             type: DataTypes.INTEGER,
             allowNull: false,
             references: {
-                model: 'Users',
+                model: 'users',
                 key: 'id'
-            }
+            },
+            comment: 'User ID of team creator/owner'
         },
 
-        // Metadata
+        // ✅ ADD THIS - Foreign Key - Last Updater
+        updatedBy: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'users',
+                key: 'id'
+            },
+            comment: 'User ID of who last updated the team'
+        },
+
         maxMembers: {
             type: DataTypes.INTEGER,
             defaultValue: 50,
             validate: {
                 min: 1,
-                max: 1000
-            }
+                max: 10000
+            },
+            comment: 'Maximum number of team members allowed'
+        },
+
+        minMemberRole: {
+            type: DataTypes.ENUM('admin', 'member', 'viewer'),
+            defaultValue: 'viewer',
+            comment: 'Minimum role required to join team'
+        },
+
+        /*
+        TEAM METRICS SECTION
+        Cached counters for performance optimization
+        */
+
+        memberCount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 1,
+            comment: 'Cached member count for performance (updated when members added/removed)'
+        },
+
+        activeMembersCount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 1,
+            comment: 'Count of recently active members'
+        },
+
+        projectsCount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            comment: 'Cached count of team projects'
+        },
+
+        tasksCount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            comment: 'Cached count of team tasks'
         }
 
     }, {

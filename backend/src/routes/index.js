@@ -16,4 +16,7 @@ router.use('/users', authenticateToken, userRoutes);
 const taskRoutes = require('./task');
 router.use('/tasks', authenticateToken,taskRoutes);
 
+const teamRoutes = require('./team');
+router.use('/teams', authenticateToken, teamRoutes);
+
 module.exports = router;

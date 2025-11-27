@@ -194,182 +194,319 @@ module.exports = (sequelize, DataTypes) => {
     // This defines what the 'tasks' table will look like in the database
     Task.init({
         
-        // TASK BASIC INFORMATION SECTION
+        /*
+        PRIMARY KEY SECTION
+        */
+        
+        id: {
+            type: DataTypes.INTEGER,
+            primaryKey: true,
+            autoIncrement: true,
+            allowNull: false,
+            comment: 'Unique task identifier'
+        },
+
+        /*
+        TASK BASIC INFORMATION SECTION
+        Core details that identify and describe the task
+        */
         
         // Task title/name - required field
         title: {
-            type: DataTypes.STRING,         // VARCHAR(255) in SQL
-            allowNull: false,               // NOT NULL constraint - this field is required
-            validate: {                     // Custom validation rules
-                len: [3, 200],              // Title must be between 3 and 200 characters
-                notEmpty: true              // Cannot be empty string
-            }
-            // Database: title VARCHAR(255) NOT NULL
+            type: DataTypes.STRING(200),
+            allowNull: false,
+            validate: {
+                len: [3, 200],
+                notEmpty: true
+            },
+            comment: 'Task title/name'
         },
         
         // Task description - optional detailed description
         description: {
-            type: DataTypes.TEXT,           // TEXT type in SQL (can store long text)
-            allowNull: true,                // This field is optional (can be NULL)
-            validate: {                     // Custom validation rules
-                len: [0, 1000]              // Description can be 0 to 1000 characters
-            }
-            // Database: description TEXT
+            type: DataTypes.TEXT,
+            allowNull: true,
+            validate: {
+                len: [0, 2000]
+            },
+            comment: 'Detailed task description'
         },
 
-        // TASK STATUS AND PRIORITY SECTION
+        // Rich description with markdown/formatting
+        descriptionRich: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+            comment: 'Task description in markdown format'
+        },
+
+        /*
+        TASK STATUS AND PRIORITY SECTION
+        Tracks task lifecycle and urgency
+        */
         
         // Task status - tracks task lifecycle
         status: {
             type: DataTypes.ENUM('todo', 'in-progress', 'review', 'completed', 'cancelled'),
-            allowNull: false,               // Required field
-            defaultValue: 'todo',           // New tasks start as todo
+            allowNull: false,
+            defaultValue: 'todo',
             comment: 'Current status of the task'
-            // Database: status ENUM('todo', 'in-progress', 'review', 'completed', 'cancelled') DEFAULT 'todo'
         },
 
         // Task priority level
         priority: {
             type: DataTypes.ENUM('low', 'medium', 'high', 'critical'),
-            allowNull: false,               // Required field
-            defaultValue: 'medium',         // Default priority is medium
-            comment: 'Priority level of the task'
-            // Database: priority ENUM('low', 'medium', 'high', 'critical') DEFAULT 'medium'
+            allowNull: false,
+            defaultValue: 'medium',
+            comment: 'Priority level (affects urgency and ordering)'
         },
 
-        // TASK TIMELINE SECTION
+        /*
+        TASK TIMELINE SECTION
+        Dates and timing-related fields
+        */
         
         // When the task is due
         dueDate: {
-            type: DataTypes.DATE,           // DATETIME type in SQL (includes time)
-            allowNull: true,                // Optional - not all tasks have due dates
-            validate: {                     // Custom validation
-                isDate: true,               // Must be a valid date
-                isAfter: new Date().toISOString() // Due date should be in the future (for new tasks)
-            }
-            // Database: dueDate DATETIME
+            type: DataTypes.DATE,
+            allowNull: true,
+            comment: 'Task due date and time'
+        },
+        
+        // When the task was started
+        startDate: {
+            type: DataTypes.DATE,
+            allowNull: true,
+            comment: 'When task work was started'
         },
         
         // When the task was completed
         completedAt: {
-            type: DataTypes.DATE,           // DATETIME type in SQL
-            allowNull: true,                // Optional - only set when task is completed
-            comment: 'When the task was marked as completed'
-            // Database: completedAt DATETIME COMMENT 'When the task was marked as completed'
+            type: DataTypes.DATE,
+            allowNull: true,
+            comment: 'When task was marked as completed'
         },
 
-        // FOREIGN KEY SECTION
+        /*
+        TASK CATEGORIZATION SECTION
+        Labels and organization
+        */
+        
+        // Labels/tags for categorizing tasks (stored as JSON array)
+        tags: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            defaultValue: [],
+            comment: 'Array of tags for categorization (e.g., ["frontend", "urgent", "bug-fix"])'
+        },
+
+        // Task category
+        category: {
+            type: DataTypes.ENUM('feature', 'bug', 'enhancement', 'documentation', 'other'),
+            defaultValue: 'feature',
+            comment: 'Task category type'
+        },
+
+        /*
+        TASK RELATIONSHIPS SECTION
+        Foreign keys linking to other entities
+        */
         
         // Reference to the project this task belongs to
         projectId: {
-            type: DataTypes.INTEGER,        // INTEGER type in SQL
-            allowNull: true,                // Optional - tasks can exist without projects (team-level tasks)
-            references: {                   // Foreign key constraint
-                model: 'projects',          // References the 'projects' table
-                key: 'id'                   // References the 'id' column in projects table
-            }
-            // Database: projectId INT, FOREIGN KEY (projectId) REFERENCES projects(id)
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'projects',
+                key: 'id'
+            },
+            comment: 'Project this task belongs to'
         },
 
         // Reference to the team this task belongs to (for team-level tasks)
         teamId: {
-            type: DataTypes.INTEGER,        // INTEGER type in SQL
-            allowNull: true,                // Optional - tasks can belong to projects instead
-            references: {                   // Foreign key constraint
-                model: 'teams',             // References the 'teams' table
-                key: 'id'                   // References the 'id' column in teams table
-            }
-            // Database: teamId INT, FOREIGN KEY (teamId) REFERENCES teams(id)
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'teams',
+                key: 'id'
+            },
+            comment: 'Team this task belongs to (if not part of a project)'
         },
         
         // Reference to the user this task is assigned to
         assignedTo: {
-            type: DataTypes.INTEGER,        // INTEGER type in SQL
-            allowNull: true,                // Optional - tasks can be unassigned
-            references: {                   // Foreign key constraint
-                model: 'users',             // References the 'users' table
-                key: 'id'                   // References the 'id' column in users table
-            }
-            // Database: assignedTo INT, FOREIGN KEY (assignedTo) REFERENCES users(id)
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'users',
+                key: 'id'
+            },
+            comment: 'User assigned to complete this task'
         },
         
         // Reference to the user who created this task
         createdBy: {
-            type: DataTypes.INTEGER,        // INTEGER type in SQL
-            allowNull: false,               // Required - every task must have a creator
-            references: {                   // Foreign key constraint
-                model: 'users',             // References the 'users' table
-                key: 'id'                   // References the 'id' column in users table
-            }
-            // Database: createdBy INT NOT NULL, FOREIGN KEY (createdBy) REFERENCES users(id)
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            references: {
+                model: 'users',
+                key: 'id'
+            },
+            comment: 'User who created this task'
         },
 
         // Reference to the user who completed this task
         completedBy: {
-            type: DataTypes.INTEGER,        // INTEGER type in SQL
-            allowNull: true,                // Optional - only set when task is completed
-            references: {                   // Foreign key constraint
-                model: 'users',             // References the 'users' table
-                key: 'id'                   // References the 'id' column in users table
-            }
-            // Database: completedBy INT, FOREIGN KEY (completedBy) REFERENCES users(id)
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'users',
+                key: 'id'
+            },
+            comment: 'User who marked task as completed'
         },
 
-        // TASK METADATA SECTION
+        /*
+        TASK ESTIMATION AND TRACKING SECTION
+        Time and effort tracking
+        */
         
         // Estimated hours to complete this task
         estimatedHours: {
-            type: DataTypes.DECIMAL(5, 2),  // DECIMAL(5,2) - up to 3 digits before decimal, 2 after (999.99)
-            allowNull: true,                // Optional field
-            validate: {                     // Validation rules
-                min: 0                      // Cannot be negative
+            type: DataTypes.DECIMAL(8, 2),
+            allowNull: true,
+            validate: {
+                min: 0
             },
-            comment: 'Estimated hours to complete the task'
-            // Database: estimatedHours DECIMAL(5,2) COMMENT 'Estimated hours to complete the task'
+            comment: 'Estimated hours to complete (for time tracking)'
         },
         
         // Actual hours spent on this task
         actualHours: {
-            type: DataTypes.DECIMAL(5, 2),  // DECIMAL(5,2) - up to 3 digits before decimal, 2 after
-            allowNull: true,                // Optional field
-            defaultValue: 0,                // Starts at 0 hours
-            validate: {                     // Validation rules
-                min: 0                      // Cannot be negative
+            type: DataTypes.DECIMAL(8, 2),
+            allowNull: true,
+            defaultValue: 0,
+            validate: {
+                min: 0
             },
-            comment: 'Actual hours spent on the task'
-            // Database: actualHours DECIMAL(5,2) DEFAULT 0 COMMENT 'Actual hours spent on the task'
+            comment: 'Actual hours spent (for time tracking)'
         },
 
         // Task progress percentage (0-100)
         progress: {
-            type: DataTypes.INTEGER,        // INTEGER type in SQL
-            allowNull: false,               // Required field
-            defaultValue: 0,                // New tasks start at 0% progress
-            validate: {                     // Validation rules
-                min: 0,                     // Cannot be less than 0%
-                max: 100                    // Cannot be more than 100%
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
+            validate: {
+                min: 0,
+                max: 100
             },
             comment: 'Task completion percentage (0-100)'
-            // Database: progress INT DEFAULT 0 COMMENT 'Task completion percentage (0-100)'
         },
 
-        // Task position/order in a list (for Kanban boards)
+        /*
+        TASK ORGANIZATION SECTION
+        Positioning and grouping
+        */
+        
+        // Task position/order in a list (for Kanban boards or custom sorting)
         position: {
-            type: DataTypes.INTEGER,        // INTEGER type in SQL
-            allowNull: true,                // Optional field
-            defaultValue: 0,                // Default position
-            comment: 'Position of task in list for ordering'
-            // Database: position INT DEFAULT 0 COMMENT 'Position of task in list for ordering'
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            defaultValue: 0,
+            comment: 'Position for custom ordering (e.g., in Kanban board)'
         },
 
-        // Labels/tags for categorizing tasks (stored as JSON array)
-        tags: {
-            type: DataTypes.JSON,           // JSON type - stores array of strings
-            allowNull: true,                // Optional field
-            defaultValue: [],               // Empty array by default
-            comment: 'Tags/labels for categorizing the task'
-            // Database: tags JSON COMMENT 'Tags/labels for categorizing the task'
-            // Example: ['frontend', 'urgent', 'bug-fix']
+        // Section/column task belongs to (for Kanban-style organization)
+        section: {
+            type: DataTypes.ENUM('backlog', 'todo', 'in-progress', 'review', 'done'),
+            defaultValue: 'todo',
+            comment: 'Kanban board section/column'
+        },
+
+        /*
+        TASK PROPERTIES SECTION
+        Additional configuration and flags
+        */
+
+        // Whether task is marked as recurring
+        isRecurring: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+            comment: 'Whether this is a recurring task'
+        },
+
+        // Recurring pattern if isRecurring is true
+        recurringPattern: {
+            type: DataTypes.ENUM('daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'),
+            allowNull: true,
+            comment: 'Recurrence pattern if task repeats'
+        },
+
+        // Whether task is blocked by another task
+        isBlocked: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+            comment: 'Whether task is blocked by dependencies'
+        },
+
+        // ID of blocking task (if applicable)
+        blockedBy: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'tasks',
+                key: 'id'
+            },
+            comment: 'Task ID that blocks this task'
+        },
+
+        // Whether this is a subtask
+        isSubtask: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+            comment: 'Whether this is a subtask of another task'
+        },
+
+        // Parent task ID if this is a subtask
+        parentTaskId: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'tasks',
+                key: 'id'
+            },
+            comment: 'Parent task ID if this is a subtask'
+        },
+
+        // Custom metadata
+        metadata: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            comment: 'Custom metadata and properties'
+        },
+
+        /*
+        TASK METRICS SECTION
+        Cached counters for performance
+        */
+
+        commentsCount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            comment: 'Cached count of comments on this task'
+        },
+
+        attachmentsCount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            comment: 'Cached count of attachments on this task'
+        },
+
+        reactionsCount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 0,
+            comment: 'Cached count of reactions on this task'
         }
 
         // NOTE: Sequelize automatically adds these columns unless disabled:

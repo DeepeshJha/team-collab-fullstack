@@ -229,10 +229,15 @@ module.exports = (sequelize, DataTypes) => {
         email: {
             type: DataTypes.STRING,         // VARCHAR(255) in SQL
             allowNull: false,               // REQUIRED - every user needs an email
-            unique: true,                   // UNIQUE CONSTRAINT - no two users can have same email
+            unique: {
+                name: 'unique_email',
+                msg: 'Email already exists'  // ← Better error message
+            },
             validate: {                     // VALIDATION RULES
-                isEmail: true,              // Must be valid email format (contains @ and domain)
-                len: [5, 254]               // Email length between 5 and 254 characters (RFC standard)
+                isEmail: {
+                    msg: 'Must be a valid email address'
+                },
+                notEmpty: true
             },
             comment: 'User email address - used for login and notifications'
         },
@@ -245,7 +250,11 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING,         // VARCHAR(255) - enough space for hashed passwords
             allowNull: false,               // REQUIRED - every user needs a password
             validate: {                     // VALIDATION RULES
-                // len: [60, 255]              // Hashed passwords are typically 60+ characters
+                len: {
+                    args: [6, 255],
+                    msg: 'Password must be at least 6 characters'
+                },
+                notEmpty: true
             },
             comment: 'Hashed password - never store plain text passwords!'
         },
@@ -270,6 +279,12 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.ENUM('admin', 'member', 'viewer'),  // Only these 3 values allowed
             allowNull: false,               // REQUIRED - every user must have a role
             defaultValue: 'member',         // New users get 'member' role by default
+            validate: {
+                isIn: {
+                    args: [['admin', 'member', 'viewer']],
+                    msg: 'Role must be admin, member, or viewer'
+                }
+            },
             comment: 'User role: admin (full access), member (standard user), viewer (read-only)'
         },
         // DATABASE RESULT: role ENUM('admin', 'member', 'viewer') NOT NULL DEFAULT 'member'
@@ -283,6 +298,14 @@ module.exports = (sequelize, DataTypes) => {
             comment: 'Whether user account is active and can login'
         },
         // DATABASE RESULT: isActive BOOLEAN NOT NULL DEFAULT true
+        
+        // COLUMN 7: Refresh Token
+        // PURPOSE: Store refresh token for generating new access tokens
+        refreshToken: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+            comment: 'Refresh token for generating new access tokens'
+        },
         
         /*
         AUTOMATIC COLUMNS:
@@ -377,11 +400,13 @@ module.exports = (sequelize, DataTypes) => {
         // HOOKS: Functions that run at specific points in the model lifecycle
         hooks: {
             // BEFORE CREATING A NEW USER
-            beforeCreate: async (user, options) => {
-                // Hash the user's password before saving to database
-                // user.password = await bcrypt.hash(user.password, 10);
+            beforeCreate: async (user) => {
+                // Hash the user's password before saving to database (automatic!)
+                if (user.password) {
+                    user.password = await bcrypt.hash(user.password, 10);
+                }
             },
-            beforeUpdate: async (user, options) => {
+            beforeUpdate: async (user) => {
                 // If password is being changed, hash the new password
                 if (user.changed('password')) {
                     user.password = await bcrypt.hash(user.password, 10);
