@@ -7,12 +7,16 @@
 1. [Introduction & Prerequisites](#introduction--prerequisites)
 2. [Project Architecture Overview](#project-architecture-overview)  
 3. [Database Layer with Sequelize](#database-layer-with-sequelize)
-4. [Authentication & Security System](#authentication--security-system)
-5. [API Development (Controllers & Routes)](#api-development-controllers--routes)
-6. [Code Organization & Best Practices](#code-organization--best-practices)
-7. [Step-by-Step Implementation Guide](#step-by-step-implementation-guide)
-8. [Common Patterns & Solutions](#common-patterns--solutions)
-9. [Troubleshooting & FAQs](#troubleshooting--faqs)
+4. [Core Models Explained](#core-models-explained)
+5. [Authentication & Security System](#authentication--security-system)
+6. [API Development (Controllers & Routes)](#api-development-controllers--routes)
+7. [Input Validation & Data Sanitization](#input-validation--data-sanitization)
+8. [Advanced Error Handling](#advanced-error-handling)
+9. [Testing Strategies](#testing-strategies)
+10. [Code Organization & Best Practices](#code-organization--best-practices)
+11. [Step-by-Step Implementation Guide](#step-by-step-implementation-guide)
+12. [Common Patterns & Solutions](#common-patterns--solutions)
+13. [Troubleshooting & FAQs](#troubleshooting--faqs)
 
 ---
 
@@ -80,19 +84,19 @@
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
 │                 EXPRESS.JS SERVER                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │   Routes    │  │ Middleware  │  │    Controllers      │ │
-│  │  (API URLs) │  │ (Auth,CORS) │  │ (Business Logic)    │ │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Routes    │  │ Middleware  │  │    Controllers      │  │
+│  │  (API URLs) │  │ (Auth,CORS) │  │ (Business Logic)    │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 └─────────────────────┬───────────────────────────────────────┘
                       │ Sequelize ORM
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
 │                   MySQL DATABASE                            │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────────┐   │
-│  │  users  │ │  teams  │ │projects │ │     tasks       │   │
-│  │ table   │ │  table  │ │  table  │ │    table        │   │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────────────┘   │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────────┐    │
+│  │  users  │ │  teams  │ │projects │ │     tasks       │    │
+│  │ table   │ │  table  │ │  table  │ │    table        │    │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -312,6 +316,631 @@ hooks: {
 // - beforeCreate / afterCreate  
 // - beforeUpdate / afterUpdate
 // - beforeDestroy / afterDestroy
+```
+
+---
+
+## Core Models Explained
+
+This section provides detailed documentation of each major model in the application, explaining their purpose, relationships, and usage patterns.
+
+### Team Model
+
+#### What is the Team Model?
+The Team model represents groups of users working together on projects. Think of it like a department in a company or a squad in a sports team.
+
+#### Real-World Examples
+- **Frontend Development Team** - handles website user interface
+- **Marketing Team** - manages campaigns and promotion
+- **Design Team** - creates visual assets and user experience
+- **Backend Team** - manages servers and databases
+
+#### Team Model Schema
+```javascript
+// models/team.js
+{
+  id: "Auto-increment primary key",
+  name: "Team name (required)",
+  description: "Detailed team description",
+  descriptionRich: "Rich text description with formatting",
+  createdBy: "Foreign key - User who created the team",
+  updatedBy: "Foreign key - User who last updated",
+  isPrivate: "Boolean - Is team private or public",
+  visibility: "public | private | restricted",
+  department: "Team department/category",
+  tags: "JSON array of team tags",
+  icon: "Team icon/logo URL",
+  color: "Hex color for team branding",
+  settings: "JSON object for team settings",
+  createdAt: "Creation timestamp",
+  updatedAt: "Last modification timestamp"
+}
+```
+
+#### Team Relationships
+```javascript
+// Team Creator (One-to-One)
+Team.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+// Usage: const creator = await team.getCreator();
+
+// Team Members (Many-to-Many)
+Team.belongsToMany(User, { 
+    through: 'TeamMembers',
+    foreignKey: 'teamId',
+    otherKey: 'userId',
+    as: 'members'
+});
+// Usage: const members = await team.getMembers();
+// Usage: await team.addMember(userId);
+
+// Team Projects (One-to-Many)
+Team.hasMany(Project, { 
+    foreignKey: 'teamId',
+    as: 'projects'
+});
+// Usage: const projects = await team.getProjects();
+```
+
+#### Team Controller Examples
+```javascript
+// controllers/team.js
+const { Team, User, Project } = require('../models');
+
+// Get all teams for current user
+const getUserTeams = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        // Get teams where user is creator OR member
+        const teams = await Team.findAll({
+            where: {
+                [Op.or]: [
+                    { createdBy: userId },
+                    { '$members.id$': userId }
+                ]
+            },
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'name', 'email'] },
+                { model: User, as: 'members', attributes: ['id', 'name', 'email'] }
+            ],
+            distinct: true
+        });
+        
+        res.json(teams);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch teams', error: error.message });
+    }
+};
+
+// Get team with all details
+const getTeamDetails = async (req, res) => {
+    try {
+        const { teamId } = req.params;
+        
+        const team = await Team.findByPk(teamId, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'name', 'email'] },
+                { model: User, as: 'members', attributes: ['id', 'name', 'email'] },
+                { 
+                    model: Project, 
+                    as: 'projects',
+                    attributes: ['id', 'title', 'status'],
+                    limit: 10
+                }
+            ]
+        });
+        
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
+        }
+        
+        res.json(team);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch team', error: error.message });
+    }
+};
+
+// Create new team
+const createTeam = async (req, res) => {
+    try {
+        const { name, description, isPrivate, visibility } = req.body;
+        
+        // Validation
+        if (!name || name.trim().length < 2) {
+            return res.status(400).json({ message: 'Team name must be at least 2 characters' });
+        }
+        
+        // Create team
+        const team = await Team.create({
+            name,
+            description,
+            isPrivate: isPrivate || false,
+            visibility: visibility || 'public',
+            createdBy: req.user.id
+        });
+        
+        // Add creator as member
+        await team.addMember(req.user.id);
+        
+        res.status(201).json(team);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to create team', error: error.message });
+    }
+};
+
+// Add member to team
+const addTeamMember = async (req, res) => {
+    try {
+        const { teamId, userId } = req.body;
+        
+        // Verify team exists and user has permission
+        const team = await Team.findByPk(teamId);
+        if (!team || team.createdBy !== req.user.id) {
+            return res.status(403).json({ message: 'Permission denied' });
+        }
+        
+        // Add member
+        await team.addMember(userId);
+        
+        res.json({ message: 'Member added successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to add member', error: error.message });
+    }
+};
+```
+
+### Project Model
+
+#### What is the Project Model?
+Projects represent specific work items or initiatives that teams undertake. They organize tasks and enable tracking of progress toward goals.
+
+#### Real-World Examples
+- **Website Redesign Project** - redesigning company website
+- **Mobile App Launch** - releasing new mobile application
+- **API Integration Project** - integrating third-party services
+- **Database Migration** - migrating legacy systems
+
+#### Project Model Schema
+```javascript
+// models/project.js
+{
+  id: "Auto-increment primary key",
+  title: "Project title (required)",
+  description: "Project description",
+  descriptionRich: "Rich text description",
+  teamId: "Foreign key - Which team owns this project",
+  createdBy: "Foreign key - User who created the project",
+  status: "active | completed | on-hold | archived",
+  priority: "low | medium | high | critical",
+  startDate: "Project start date",
+  endDate: "Project end date",
+  budget: "Project budget amount",
+  completionPercentage: "Calculated progress (0-100)",
+  visibility: "public | team-only | restricted",
+  tags: "JSON array of project tags",
+  createdAt: "Creation timestamp",
+  updatedAt: "Last modification timestamp"
+}
+```
+
+#### Project Relationships
+```javascript
+// Belongs to Team
+Project.belongsTo(Team, { foreignKey: 'teamId', as: 'team' });
+
+// Belongs to Creator (User)
+Project.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+// Has many Tasks
+Project.hasMany(Task, { foreignKey: 'projectId', as: 'tasks' });
+
+// Has many assigned Users (Many-to-Many)
+Project.belongsToMany(User, {
+    through: 'ProjectAssignees',
+    foreignKey: 'projectId',
+    otherKey: 'userId',
+    as: 'assignees'
+});
+
+// Has many Comments
+Project.hasMany(Comment, { foreignKey: 'projectId', as: 'comments' });
+```
+
+#### Project Helper Methods
+```javascript
+// Calculate project completion percentage
+async getCompletionPercentage() {
+    const tasks = await this.getTasks();
+    if (tasks.length === 0) return 0;
+    const completed = tasks.filter(t => t.status === 'completed').length;
+    return Math.round((completed / tasks.length) * 100);
+}
+
+// Check if project is overdue
+isOverdue() {
+    if (!this.endDate) return false;
+    return new Date() > new Date(this.endDate) && 
+           this.status !== 'completed' && 
+           this.status !== 'archived';
+}
+
+// Get days remaining
+getDaysRemaining() {
+    if (!this.endDate) return null;
+    const today = new Date();
+    const due = new Date(this.endDate);
+    const diffTime = due - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+```
+
+#### Project Controller Examples
+```javascript
+// Get projects by team
+const getTeamProjects = async (req, res) => {
+    try {
+        const { teamId } = req.params;
+        const { status, priority, page = 1, limit = 10 } = req.query;
+        
+        const whereClause = { teamId };
+        if (status) whereClause.status = status;
+        if (priority) whereClause.priority = priority;
+        
+        const projects = await Project.findAll({
+            where: whereClause,
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'name'] },
+                { model: Task, as: 'tasks', attributes: ['id', 'title', 'status'] }
+            ],
+            order: [['createdAt', 'DESC']],
+            limit: parseInt(limit),
+            offset: (parseInt(page) - 1) * parseInt(limit)
+        });
+        
+        // Add completion percentage to each project
+        const projectsWithCompletion = await Promise.all(
+            projects.map(async (project) => {
+                const completion = await project.getCompletionPercentage();
+                return { ...project.toJSON(), completionPercentage: completion };
+            })
+        );
+        
+        res.json(projectsWithCompletion);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch projects', error: error.message });
+    }
+};
+```
+
+### Task Model
+
+#### What is the Task Model?
+Tasks are individual units of work within projects. They represent specific actions or deliverables that team members need to complete.
+
+#### Real-World Examples
+- **Implement Login Feature** - coding task
+- **Design Dashboard Mockups** - design task
+- **Write API Documentation** - documentation task
+- **Test payment integration** - testing task
+
+#### Task Model Schema
+```javascript
+// models/task.js
+{
+  id: "Auto-increment primary key",
+  title: "Task title (required)",
+  description: "Task description",
+  projectId: "Foreign key - Which project this task belongs to",
+  teamId: "Foreign key - Optional direct team assignment",
+  assignedTo: "Foreign key - User responsible for task",
+  createdBy: "Foreign key - User who created the task",
+  status: "todo | in-progress | review | completed | blocked | cancelled",
+  priority: "low | medium | high | critical",
+  dueDate: "When task should be completed",
+  estimatedHours: "Estimated time to complete (in hours)",
+  actualHours: "Actual time spent (in hours)",
+  completionPercentage: "Task progress (0-100)",
+  subtasks: "JSON array of subtasks",
+  tags: "JSON array of task tags",
+  attachments: "JSON array of attachment references",
+  createdAt: "Creation timestamp",
+  updatedAt: "Last modification timestamp"
+}
+```
+
+#### Task Relationships
+```javascript
+// Belongs to Project
+Task.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
+
+// Belongs to Team (optional)
+Task.belongsTo(Team, { foreignKey: 'teamId', as: 'team' });
+
+// Belongs to Assignee (User)
+Task.belongsTo(User, { foreignKey: 'assignedTo', as: 'assignee' });
+
+// Belongs to Creator (User)
+Task.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+// Has many Comments
+Task.hasMany(Comment, { foreignKey: 'taskId', as: 'comments' });
+
+// Has many Attachments
+Task.hasMany(Attachment, { foreignKey: 'taskId', as: 'attachments' });
+
+// Has many Reactions (emoji reactions)
+Task.hasMany(Reaction, { foreignKey: 'taskId', as: 'reactions' });
+```
+
+#### Task Helper Methods
+```javascript
+// Check if task is overdue
+isOverdue() {
+    if (!this.dueDate) return false;
+    return new Date() > new Date(this.dueDate) && 
+           !['completed', 'cancelled'].includes(this.status);
+}
+
+// Days until due
+getDaysUntilDue() {
+    if (!this.dueDate) return null;
+    const today = new Date();
+    const due = new Date(this.dueDate);
+    const diffTime = due - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
+// Get task age in days
+getAgeInDays() {
+    const today = new Date();
+    const created = new Date(this.createdAt);
+    const diffTime = today - created;
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+}
+```
+
+#### Task Controller Examples
+```javascript
+// Get tasks for user (assigned to them)
+const getUserTasks = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { status, priority, dueDate, page = 1, limit = 20 } = req.query;
+        
+        const whereClause = { assignedTo: userId };
+        if (status) whereClause.status = status;
+        if (priority) whereClause.priority = priority;
+        if (dueDate) whereClause.dueDate = { [Op.lt]: new Date(dueDate) };
+        
+        const tasks = await Task.findAll({
+            where: whereClause,
+            include: [
+                { model: Project, as: 'project', attributes: ['id', 'title'] },
+                { model: User, as: 'creator', attributes: ['id', 'name'] },
+                { model: Comment, as: 'comments', limit: 3 }
+            ],
+            order: [
+                ['priority', 'DESC'],
+                ['dueDate', 'ASC']
+            ],
+            limit: parseInt(limit),
+            offset: (parseInt(page) - 1) * parseInt(limit)
+        });
+        
+        res.json(tasks);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch tasks', error: error.message });
+    }
+};
+
+// Update task status
+const updateTaskStatus = async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        const { status, completionPercentage } = req.body;
+        
+        const task = await Task.findByPk(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+        
+        // Check permission (owner or project creator)
+        if (task.assignedTo !== req.user.id && task.createdBy !== req.user.id) {
+            return res.status(403).json({ message: 'Permission denied' });
+        }
+        
+        await task.update({ 
+            status, 
+            completionPercentage: completionPercentage || task.completionPercentage 
+        });
+        
+        res.json(task);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to update task', error: error.message });
+    }
+};
+```
+
+### Message Model
+
+#### What is the Message Model?
+Messages enable real-time team communication within projects and teams. They support rich text, attachments, reactions, and threaded conversations.
+
+#### Real-World Examples
+- **Team Announcements** - important updates for the team
+- **Project Discussions** - discussing project progress and decisions
+- **Quick Questions** - asking teammates about specific tasks
+- **File Sharing** - sharing documents, images, and resources
+
+#### Message Model Schema
+```javascript
+// models/message.js
+{
+  id: "Auto-increment primary key",
+  content: "Message text content",
+  contentRich: "Rich text version with formatting",
+  senderId: "Foreign key - User who sent the message",
+  teamId: "Foreign key - Team chat this belongs to",
+  projectId: "Foreign key - Optional project context",
+  parentId: "Foreign key - Parent message (for replies/threads)",
+  messageType: "text | announcement | system | pin",
+  isEdited: "Boolean - Has message been edited",
+  editedAt: "Timestamp of last edit",
+  isSystemMessage: "Boolean - System generated message",
+  isPinned: "Boolean - Is message pinned",
+  mentions: "JSON array of mentioned user IDs",
+  attachments: "JSON array of attachment references",
+  createdAt: "Creation timestamp",
+  updatedAt: "Last modification timestamp"
+}
+```
+
+#### Message Relationships
+```javascript
+// Belongs to Sender (User)
+Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
+
+// Belongs to Team
+Message.belongsTo(Team, { foreignKey: 'teamId', as: 'team' });
+
+// Belongs to Parent Message (for replies)
+Message.belongsTo(Message, { foreignKey: 'parentId', as: 'parentMessage' });
+
+// Has many Replies
+Message.hasMany(Message, { foreignKey: 'parentId', as: 'replies' });
+
+// Has many Reactions (emoji reactions)
+Message.hasMany(Reaction, { foreignKey: 'messageId', as: 'reactions' });
+
+// Has many Attachments
+Message.hasMany(Attachment, { foreignKey: 'messageId', as: 'attachments' });
+```
+
+#### Message Helper Methods
+```javascript
+// Check if message can be edited (within time limit)
+canEdit(userId, timeLimit = 15) { // 15 minutes default
+    if (this.senderId !== userId) return false;
+    if (this.isEdited) return false;
+    
+    const now = new Date();
+    const created = new Date(this.createdAt);
+    const diffMinutes = (now - created) / (1000 * 60);
+    
+    return diffMinutes <= timeLimit;
+}
+
+// Check if message can be deleted
+canDelete(userId) {
+    return this.senderId === userId || this.isSystemMessage;
+}
+
+// Get formatted timestamp for display
+getFormattedTime() {
+    const now = new Date();
+    const messageTime = new Date(this.createdAt);
+    const diffSeconds = (now - messageTime) / 1000;
+    
+    if (diffSeconds < 60) return 'now';
+    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+    if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+    return messageTime.toLocaleDateString();
+}
+```
+
+#### Message Controller Examples
+```javascript
+// Get team messages (with pagination and filtering)
+const getTeamMessages = async (req, res) => {
+    try {
+        const { teamId } = req.params;
+        const { page = 1, limit = 50, searchTerm } = req.query;
+        
+        const whereClause = { 
+            teamId,
+            parentId: null // Only root messages, not replies
+        };
+        
+        if (searchTerm) {
+            whereClause[Op.or] = [
+                { content: { [Op.like]: `%${searchTerm}%` } },
+                { contentRich: { [Op.like]: `%${searchTerm}%` } }
+            ];
+        }
+        
+        const { count, rows } = await Message.findAndCountAll({
+            where: whereClause,
+            include: [
+                { model: User, as: 'sender', attributes: ['id', 'name', 'avatar'] },
+                { 
+                    model: Message, 
+                    as: 'replies',
+                    include: [{ model: User, as: 'sender', attributes: ['id', 'name'] }]
+                },
+                { model: Reaction, as: 'reactions', attributes: ['id', 'emoji', 'userId'] },
+                { model: Attachment, as: 'attachments' }
+            ],
+            order: [['createdAt', 'DESC']],
+            limit: parseInt(limit),
+            offset: (parseInt(page) - 1) * parseInt(limit),
+            distinct: true
+        });
+        
+        res.json({
+            messages: rows,
+            pagination: {
+                total: count,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(count / limit)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch messages', error: error.message });
+    }
+};
+
+// Post a new message
+const sendMessage = async (req, res) => {
+    try {
+        const { teamId } = req.params;
+        const { content, contentRich, mentions, attachmentIds } = req.body;
+        
+        if (!content || content.trim().length === 0) {
+            return res.status(400).json({ message: 'Message content is required' });
+        }
+        
+        // Create message
+        const message = await Message.create({
+            content,
+            contentRich,
+            senderId: req.user.id,
+            teamId,
+            mentions: mentions || []
+        });
+        
+        // Add attachments if provided
+        if (attachmentIds && attachmentIds.length > 0) {
+            const attachments = await Attachment.findAll({
+                where: { id: attachmentIds }
+            });
+            await message.addAttachments(attachments);
+        }
+        
+        // Return message with details
+        const fullMessage = await Message.findByPk(message.id, {
+            include: [
+                { model: User, as: 'sender' },
+                { model: Reaction, as: 'reactions' },
+                { model: Attachment, as: 'attachments' }
+            ]
+        });
+        
+        res.status(201).json(fullMessage);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to send message', error: error.message });
+    }
+};
 ```
 
 ### Database Querying Patterns
@@ -616,7 +1245,807 @@ router.get('/profile', authenticateToken, (req, res) => {
 
 ---
 
-## API Development (Controllers & Routes)
+## Input Validation & Data Sanitization
+
+### Why Validation Matters
+
+Input validation is critical for:
+- **Security** - Prevents injection attacks and malicious data
+- **Data Integrity** - Ensures database contains valid, consistent data
+- **User Experience** - Provides clear feedback on what's wrong
+- **API Reliability** - Prevents crashes from unexpected data formats
+
+### Validation Strategies
+
+#### 1. Sequelize Model-Level Validation
+```javascript
+// models/user.js - Validation at model definition
+User.init({
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        validate: {
+            len: [2, 100],              // String length between 2-100
+            notEmpty: true              // Cannot be empty string
+        }
+    },
+    email: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+        validate: {
+            isEmail: true,              // Must be valid email format
+            len: [5, 254]               // Valid email length
+        }
+    },
+    password: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        validate: {
+            len: [6, 255],              // Password minimum 6 characters
+            isStrongPassword() {        // Custom validator
+                if (!/[A-Z]/.test(this.password)) {
+                    throw new Error('Password must contain uppercase letter');
+                }
+                if (!/[0-9]/.test(this.password)) {
+                    throw new Error('Password must contain number');
+                }
+            }
+        }
+    },
+    role: {
+        type: DataTypes.ENUM('admin', 'member', 'viewer'),
+        defaultValue: 'member',
+        validate: {
+            isIn: [['admin', 'member', 'viewer']]
+        }
+    }
+});
+```
+
+#### 2. Controller-Level Validation
+```javascript
+// controllers/user.js - Validation in business logic
+const createUser = async (req, res) => {
+    try {
+        const { name, email, password, confirmPassword } = req.body;
+        
+        // Required fields
+        if (!name || !email || !password || !confirmPassword) {
+            return res.status(400).json({
+                message: 'All fields are required',
+                missingFields: {
+                    name: !name,
+                    email: !email,
+                    password: !password,
+                    confirmPassword: !confirmPassword
+                }
+            });
+        }
+        
+        // Validate name
+        if (name.trim().length < 2) {
+            return res.status(400).json({
+                message: 'Name must be at least 2 characters long'
+            });
+        }
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                message: 'Please provide a valid email address'
+            });
+        }
+        
+        // Validate password strength
+        if (password.length < 6) {
+            return res.status(400).json({
+                message: 'Password must be at least 6 characters long'
+            });
+        }
+        
+        if (!/[A-Z]/.test(password)) {
+            return res.status(400).json({
+                message: 'Password must contain at least one uppercase letter'
+            });
+        }
+        
+        if (!/[0-9]/.test(password)) {
+            return res.status(400).json({
+                message: 'Password must contain at least one number'
+            });
+        }
+        
+        // Check passwords match
+        if (password !== confirmPassword) {
+            return res.status(400).json({
+                message: 'Passwords do not match'
+            });
+        }
+        
+        // Check if email already exists
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+            return res.status(409).json({
+                message: 'Email is already registered'
+            });
+        }
+        
+        // All validations passed, create user
+        const user = await User.create({ name, email, password });
+        res.status(201).json({
+            message: 'User created successfully',
+            user: { id: user.id, name: user.name, email: user.email }
+        });
+    } catch (error) {
+        // Handle Sequelize validation errors
+        if (error.name === 'SequelizeValidationError') {
+            return res.status(400).json({
+                message: 'Validation failed',
+                errors: error.errors.map(e => ({
+                    field: e.path,
+                    message: e.message
+                }))
+            });
+        }
+        
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+```
+
+#### 3. Middleware-Based Validation
+```javascript
+// middlewares/validation.js
+const validateUserInput = (req, res, next) => {
+    const errors = {};
+    
+    const { name, email, password } = req.body;
+    
+    // Validate name
+    if (!name || name.trim().length < 2) {
+        errors.name = 'Name is required and must be at least 2 characters';
+    }
+    
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        errors.email = 'Valid email address is required';
+    }
+    
+    // Validate password
+    if (!password || password.length < 6) {
+        errors.password = 'Password must be at least 6 characters long';
+    }
+    
+    // If there are errors, return them
+    if (Object.keys(errors).length > 0) {
+        return res.status(400).json({
+            message: 'Validation failed',
+            errors
+        });
+    }
+    
+    // Validation passed, continue
+    next();
+};
+
+// Usage in routes
+router.post('/users', validateUserInput, userController.createUser);
+```
+
+### Data Sanitization
+
+Sanitization removes or escapes potentially dangerous characters:
+
+```javascript
+// utils/sanitizer.js
+const sanitizeInput = (data, allowedFields = []) => {
+    const sanitized = {};
+    
+    for (const field of allowedFields) {
+        if (field in data) {
+            let value = data[field];
+            
+            // Trim whitespace
+            if (typeof value === 'string') {
+                value = value.trim();
+            }
+            
+            // Escape HTML special characters
+            if (typeof value === 'string') {
+                value = value
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#x27;');
+            }
+            
+            sanitized[field] = value;
+        }
+    }
+    
+    return sanitized;
+};
+
+// Usage in controllers
+const createTeam = async (req, res) => {
+    try {
+        const allowedFields = ['name', 'description', 'isPrivate'];
+        const sanitizedData = sanitizeInput(req.body, allowedFields);
+        
+        const team = await Team.create({
+            ...sanitizedData,
+            createdBy: req.user.id
+        });
+        
+        res.status(201).json(team);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to create team' });
+    }
+};
+```
+
+---
+
+## Advanced Error Handling
+
+### Error Handling Architecture
+
+Professional error handling separates concerns across multiple layers:
+
+```
+┌──────────────────────────────────────────────────┐
+│        Application Error Flow                    │
+├──────────────────────────────────────────────────┤
+│ 1. Controller Layer   → Throw custom errors      │
+│ 2. Try/Catch Block    → Catch and format errors  │
+│ 3. Error Handler      → Centralized processing   │
+│ 4. Response Handler   → Return to client         │
+└──────────────────────────────────────────────────┘
+```
+
+### Custom Error Classes
+
+```javascript
+// utils/AppError.js
+class AppError extends Error {
+    constructor(message, statusCode) {
+        super(message);
+        this.statusCode = statusCode;
+        this.name = this.constructor.name;
+        
+        // Capture stack trace
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+
+// Specific error types
+class ValidationError extends AppError {
+    constructor(message = 'Validation failed', details = {}) {
+        super(message, 400);
+        this.details = details;
+    }
+}
+
+class NotFoundError extends AppError {
+    constructor(resource = 'Resource') {
+        super(`${resource} not found`, 404);
+    }
+}
+
+class UnauthorizedError extends AppError {
+    constructor(message = 'Unauthorized access') {
+        super(message, 401);
+    }
+}
+
+class ForbiddenError extends AppError {
+    constructor(message = 'Access denied') {
+        super(message, 403);
+    }
+}
+
+class ConflictError extends AppError {
+    constructor(message = 'Resource already exists') {
+        super(message, 409);
+    }
+}
+
+module.exports = {
+    AppError,
+    ValidationError,
+    NotFoundError,
+    UnauthorizedError,
+    ForbiddenError,
+    ConflictError
+};
+```
+
+### Centralized Error Handler Middleware
+
+```javascript
+// middlewares/errorHandler.js
+const errorHandler = (error, req, res, next) => {
+    // Log error for debugging
+    console.error({
+        timestamp: new Date().toISOString(),
+        error: error.message,
+        stack: error.stack,
+        url: req.url,
+        method: req.method,
+        ip: req.ip
+    });
+    
+    // Default error properties
+    let statusCode = 500;
+    let message = 'Internal Server Error';
+    let details = {};
+    
+    // Handle custom AppError
+    if (error.statusCode) {
+        statusCode = error.statusCode;
+        message = error.message;
+        if (error.details) {
+            details = error.details;
+        }
+    }
+    
+    // Handle Sequelize validation errors
+    if (error.name === 'SequelizeValidationError') {
+        statusCode = 400;
+        message = 'Validation Error';
+        details = error.errors.map(e => ({
+            field: e.path,
+            value: e.value,
+            message: e.message
+        }));
+    }
+    
+    // Handle Sequelize unique constraint errors
+    if (error.name === 'SequelizeUniqueConstraintError') {
+        statusCode = 409;
+        message = 'Resource already exists';
+        details = error.errors.map(e => ({
+            field: e.path,
+            message: `${e.path} already exists`
+        }));
+    }
+    
+    // Handle JWT errors
+    if (error.name === 'JsonWebTokenError') {
+        statusCode = 401;
+        message = 'Invalid token';
+    }
+    
+    if (error.name === 'TokenExpiredError') {
+        statusCode = 401;
+        message = 'Token has expired';
+    }
+    
+    // Send error response
+    res.status(statusCode).json({
+        success: false,
+        message,
+        ...(Object.keys(details).length > 0 && { details }),
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+    });
+};
+
+module.exports = errorHandler;
+```
+
+### Using Custom Errors in Controllers
+
+```javascript
+// controllers/user.js
+const {
+    ValidationError,
+    NotFoundError,
+    ConflictError,
+    ForbiddenError
+} = require('../utils/AppError');
+
+const getUserById = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        
+        // Validate ID format
+        if (isNaN(id) || id <= 0) {
+            throw new ValidationError('Invalid user ID format', { id });
+        }
+        
+        const user = await User.findByPk(id, {
+            attributes: { exclude: ['password'] }
+        });
+        
+        if (!user) {
+            throw new NotFoundError('User');
+        }
+        
+        res.json(user);
+    } catch (error) {
+        next(error); // Pass to error handler
+    }
+};
+
+const updateUser = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { email } = req.body;
+        
+        const user = await User.findByPk(id);
+        if (!user) {
+            throw new NotFoundError('User');
+        }
+        
+        // Check ownership
+        if (user.id !== req.user.id && req.user.role !== 'admin') {
+            throw new ForbiddenError('You can only update your own profile');
+        }
+        
+        // Check email uniqueness
+        if (email && email !== user.email) {
+            const existing = await User.findOne({ where: { email } });
+            if (existing) {
+                throw new ConflictError('Email already registered');
+            }
+        }
+        
+        await user.update(req.body);
+        res.json(user);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { getUserById, updateUser };
+```
+
+---
+
+## Testing Strategies
+
+### Unit Testing with Jest
+
+#### Setting Up Jest
+
+```json
+{
+  "jest": {
+    "testEnvironment": "node",
+    "coveragePathIgnorePatterns": ["/node_modules/"],
+    "testMatch": ["**/__tests__/**/*.test.js", "**/?(*.)+(spec|test).js"],
+    "collectCoverageFrom": ["src/**/*.js", "!src/app.js"]
+  }
+}
+```
+
+#### Testing Models
+
+```javascript
+// __tests__/models/user.test.js
+const { User } = require('../../src/models');
+const { sequelize } = require('../../src/models');
+
+describe('User Model', () => {
+    // Setup before each test
+    beforeEach(async () => {
+        await sequelize.sync({ force: true });
+    });
+    
+    // Cleanup after each test
+    afterEach(async () => {
+        await sequelize.close();
+    });
+    
+    describe('User Creation', () => {
+        test('should create user with valid data', async () => {
+            const user = await User.create({
+                name: 'John Doe',
+                email: 'john@example.com',
+                password: 'Test@123'
+            });
+            
+            expect(user.id).toBeDefined();
+            expect(user.name).toBe('John Doe');
+            expect(user.email).toBe('john@example.com');
+        });
+        
+        test('should hash password before saving', async () => {
+            const plainPassword = 'Test@123';
+            const user = await User.create({
+                name: 'John Doe',
+                email: 'john@example.com',
+                password: plainPassword
+            });
+            
+            expect(user.password).not.toBe(plainPassword);
+            expect(user.password.length).toBeGreaterThan(20); // bcrypt hash
+        });
+        
+        test('should fail with invalid email', async () => {
+            await expect(
+                User.create({
+                    name: 'John Doe',
+                    email: 'invalid-email',
+                    password: 'Test@123'
+                })
+            ).rejects.toThrow();
+        });
+        
+        test('should enforce unique email constraint', async () => {
+            await User.create({
+                name: 'John Doe',
+                email: 'john@example.com',
+                password: 'Test@123'
+            });
+            
+            await expect(
+                User.create({
+                    name: 'Jane Doe',
+                    email: 'john@example.com',
+                    password: 'Test@456'
+                })
+            ).rejects.toThrow();
+        });
+    });
+    
+    describe('User Validations', () => {
+        test('should require name', async () => {
+            await expect(
+                User.create({
+                    email: 'john@example.com',
+                    password: 'Test@123'
+                })
+            ).rejects.toThrow();
+        });
+        
+        test('should enforce minimum name length', async () => {
+            await expect(
+                User.create({
+                    name: 'J',
+                    email: 'john@example.com',
+                    password: 'Test@123'
+                })
+            ).rejects.toThrow();
+        });
+    });
+});
+```
+
+#### Testing Controllers
+
+```javascript
+// __tests__/controllers/user.test.js
+const request = require('supertest');
+const { app } = require('../../src/app');
+const { User } = require('../../src/models');
+const { sequelize } = require('../../src/models');
+
+describe('User Controller', () => {
+    beforeEach(async () => {
+        await sequelize.sync({ force: true });
+    });
+    
+    afterEach(async () => {
+        await sequelize.close();
+    });
+    
+    describe('POST /api/users - Create User', () => {
+        test('should create user with valid data', async () => {
+            const response = await request(app)
+                .post('/api/users')
+                .send({
+                    name: 'John Doe',
+                    email: 'john@example.com',
+                    password: 'Test@123'
+                });
+            
+            expect(response.status).toBe(201);
+            expect(response.body.id).toBeDefined();
+            expect(response.body.email).toBe('john@example.com');
+            expect(response.body.password).toBeUndefined(); // Password should not be returned
+        });
+        
+        test('should return 400 with missing fields', async () => {
+            const response = await request(app)
+                .post('/api/users')
+                .send({
+                    name: 'John Doe'
+                    // Missing email and password
+                });
+            
+            expect(response.status).toBe(400);
+            expect(response.body.message).toContain('required');
+        });
+        
+        test('should return 400 with invalid email', async () => {
+            const response = await request(app)
+                .post('/api/users')
+                .send({
+                    name: 'John Doe',
+                    email: 'invalid-email',
+                    password: 'Test@123'
+                });
+            
+            expect(response.status).toBe(400);
+            expect(response.body.message).toContain('email');
+        });
+    });
+    
+    describe('GET /api/users/:id - Get User', () => {
+        test('should return user with valid ID', async () => {
+            const user = await User.create({
+                name: 'John Doe',
+                email: 'john@example.com',
+                password: 'Test@123'
+            });
+            
+            const response = await request(app)
+                .get(`/api/users/${user.id}`);
+            
+            expect(response.status).toBe(200);
+            expect(response.body.id).toBe(user.id);
+            expect(response.body.email).toBe('john@example.com');
+        });
+        
+        test('should return 404 for non-existent user', async () => {
+            const response = await request(app)
+                .get('/api/users/99999');
+            
+            expect(response.status).toBe(404);
+            expect(response.body.message).toContain('not found');
+        });
+    });
+});
+```
+
+#### Testing Authentication
+
+```javascript
+// __tests__/controllers/auth.test.js
+const request = require('supertest');
+const { app } = require('../../src/app');
+const { User } = require('../../src/models');
+const { sequelize } = require('../../src/models');
+
+describe('Authentication', () => {
+    beforeEach(async () => {
+        await sequelize.sync({ force: true });
+    });
+    
+    afterEach(async () => {
+        await sequelize.close();
+    });
+    
+    describe('POST /api/auth/register', () => {
+        test('should register user and return token', async () => {
+            const response = await request(app)
+                .post('/api/auth/register')
+                .send({
+                    name: 'John Doe',
+                    email: 'john@example.com',
+                    password: 'Test@123'
+                });
+            
+            expect(response.status).toBe(201);
+            expect(response.body.token).toBeDefined();
+            expect(response.body.user.email).toBe('john@example.com');
+        });
+        
+        test('should not register duplicate email', async () => {
+            await User.create({
+                name: 'John Doe',
+                email: 'john@example.com',
+                password: 'Test@123'
+            });
+            
+            const response = await request(app)
+                .post('/api/auth/register')
+                .send({
+                    name: 'Jane Doe',
+                    email: 'john@example.com',
+                    password: 'Test@456'
+                });
+            
+            expect(response.status).toBe(409);
+        });
+    });
+    
+    describe('POST /api/auth/login', () => {
+        beforeEach(async () => {
+            await User.create({
+                name: 'John Doe',
+                email: 'john@example.com',
+                password: 'Test@123'
+            });
+        });
+        
+        test('should login with valid credentials', async () => {
+            const response = await request(app)
+                .post('/api/auth/login')
+                .send({
+                    email: 'john@example.com',
+                    password: 'Test@123'
+                });
+            
+            expect(response.status).toBe(200);
+            expect(response.body.token).toBeDefined();
+        });
+        
+        test('should reject invalid password', async () => {
+            const response = await request(app)
+                .post('/api/auth/login')
+                .send({
+                    email: 'john@example.com',
+                    password: 'WrongPassword'
+                });
+            
+            expect(response.status).toBe(401);
+        });
+        
+        test('should reject non-existent email', async () => {
+            const response = await request(app)
+                .post('/api/auth/login')
+                .send({
+                    email: 'nonexistent@example.com',
+                    password: 'Test@123'
+                });
+            
+            expect(response.status).toBe(401);
+        });
+    });
+    
+    describe('Protected Routes', () => {
+        let token;
+        
+        beforeEach(async () => {
+            const user = await User.create({
+                name: 'John Doe',
+                email: 'john@example.com',
+                password: 'Test@123'
+            });
+            
+            const response = await request(app)
+                .post('/api/auth/login')
+                .send({
+                    email: 'john@example.com',
+                    password: 'Test@123'
+                });
+            
+            token = response.body.token;
+        });
+        
+        test('should allow access with valid token', async () => {
+            const response = await request(app)
+                .get('/api/users')
+                .set('Authorization', `Bearer ${token}`);
+            
+            expect(response.status).toBe(200);
+        });
+        
+        test('should reject request without token', async () => {
+            const response = await request(app)
+                .get('/api/users');
+            
+            expect(response.status).toBe(401);
+        });
+        
+        test('should reject request with invalid token', async () => {
+            const response = await request(app)
+                .get('/api/users')
+                .set('Authorization', 'Bearer invalid-token');
+            
+            expect(response.status).toBe(403);
+        });
+    });
+});
+```
+
+
 
 ### Controller Pattern
 
