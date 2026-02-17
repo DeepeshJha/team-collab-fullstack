@@ -126,7 +126,8 @@ backend/
 │   │   ├── user.js           # User model with hooks
 │   │   ├── team.js           # Team model
 │   │   ├── project.js        # Project model
-│   │   └── task.js           # Task model
+│   │   ├── task.js           # Task model
+│   │   └── emailtoken.js     # Email verification & reset tokens
 │   ├── controllers/           # Business logic handlers
 │   │   ├── auth.js           # Authentication (login/register)
 │   │   ├── user.js           # User CRUD operations
@@ -141,6 +142,8 @@ backend/
 │   │   ├── auth.js           # JWT authentication middleware
 │   │   ├── validation.js     # Input validation middleware
 │   │   └── index.js          # Middleware exports
+│   ├── utils/                # Reusable helpers & services
+│   │   └── emailService.js   # Nodemailer setup & email helpers
 │   └── config/               # Configuration files
 │       └── config.json       # Database configurations
 ├── scripts/                  # Utility scripts
@@ -1104,6 +1107,65 @@ const authenticateToken = async (req, res, next) => {
     }
 };
 ```
+
+### Email Verification & Password Reset
+
+The authentication system also includes email-based verification and password reset flows built with **Nodemailer** and a dedicated **EmailToken** model.
+
+#### Email Service (Nodemailer)
+
+- Location: `backend/src/utils/emailService.js`
+- Uses `nodemailer.createTransport()` with a Mailtrap sandbox SMTP configuration for development.
+- Provides three main helpers:
+  - `generateToken(length = 32)` – creates a cryptographically secure random token used in verification and reset links.
+  - `sendVerificationEmail(email, verificationLink)` – sends a welcome email containing a 24-hour verification link.
+  - `sendPasswordResetEmail(email, resetLink)` – sends a password reset email with a 30-minute reset link.
+
+These helpers are used by the auth controller so that all email formatting and SMTP logic is centralized in one place.
+
+#### EmailToken Model
+
+- Location: `backend/src/models/emailtoken.js`
+- Table: `emailtokens`
+- Purpose: Persist time-bound tokens for:
+  - `verification` – email verification after registration
+  - `password_reset` – password reset requests
+- Key fields:
+  - `userId` – foreign key to the user who owns the token
+  - `token` – random 32+ character string sent in the email URL
+  - `type` – `'verification' | 'password_reset'`
+  - `expiresAt` – exact timestamp when the token becomes invalid
+
+The model exposes convenience helpers like `createToken(userId, token, type, expiresAt)` to encapsulate creation logic.
+
+#### Email Verification Flow
+
+1. **Registration** (`POST /api/auth/register`):
+    - After creating the user, the controller generates a random token using `generateToken()` and computes a 24-hour expiration.
+    - It stores the token in `emailtokens` as type `verification` via `EmailToken.createToken(...)`.
+    - It builds a link like `${APP_URL}/auth/verify-email/:token` and calls `sendVerificationEmail(email, verificationLink)`.
+2. **User Clicks Link** (`GET /api/auth/verify-email/:token`):
+    - The `verifyEmail` controller reads the `token` from the URL.
+    - It looks up an `EmailToken` with that token and `type = 'verification'` and checks `expiresAt`.
+    - If valid, it loads the associated user, sets `isVerified = true`, saves the user, and deletes the token.
+    - If missing or expired, it returns an appropriate error (`400` / `404`).
+
+#### Password Reset Flow
+
+1. **Request Reset** (`POST /api/auth/forgot-password`):
+    - The `forgotPassword` controller receives the user’s email.
+    - It silently looks up the user; if not found, it responds with a generic message (to avoid account enumeration).
+    - It deletes any existing `password_reset` tokens for that user so only one active token exists.
+    - It generates a new token with `generateToken()`, sets `expiresAt` to 1 hour in the future, and creates an `EmailToken` with `type = 'password_reset'`.
+    - It builds `${APP_URL}/auth/reset-password/:token` and calls `sendPasswordResetEmail(email, resetLink)`.
+2. **Reset Password** (`POST /api/auth/reset-password`):
+    - The `resetPassword` controller receives `{ token, password }`.
+    - It validates the new password (minimum length etc.).
+    - It finds the corresponding `EmailToken` with `type = 'password_reset'` and verifies that `expiresAt` is still in the future.
+    - It loads the user, updates the password (the User model hook hashes it), and deletes the token.
+    - Finally, it responds with a success message indicating the password was changed.
+
+This design keeps **tokens short-lived and single-use**, separates concerns (controllers vs. email service vs. token storage), and avoids leaking whether a given email exists in the system.
 
 ### Authentication Controller Implementation
 
